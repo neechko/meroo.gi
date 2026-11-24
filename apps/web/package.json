@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@meroogi/shared": "workspace:*",
+    "@meroogi/supabase": "workspace:*",
     "@supabase/supabase-js": "^2.39.0",
     "browser-image-compression": "^2.0.2",
     "react": "^18.2.0",
@@ -30,3 +32,4 @@
     "vite": "^5.0.8"
   }
 }
+
