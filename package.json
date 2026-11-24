@@ -1,0 +1,1 @@
+{"name":"meroogi-monorepo","private":true,"scripts":{"dev:web":"pnpm --filter @meroogi/web dev","dev:mobile":"pnpm --filter @meroogi/mobile start","build:web":"pnpm --filter @meroogi/web build","lint":"turbo run lint"},"devDependencies":{"turbo":"^2.3.0"},"packageManager":"pnpm@12.23.0"}

@@ -1,0 +1,267 @@
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
+import { supabase } from './lib/supabase'
+import { Database } from './types/database'
+
+import Login from './pages/Login'
+import Register from './pages/Register'
+import ResetPassword from './pages/ResetPassword'
+import Catalog from './pages/Catalog'
+import ServiceDetail from './pages/ServiceDetail'
+import OrderTracking from './pages/OrderTracking'
+import MyOrders from './pages/MyOrders'
+import WorkerDashboard from './pages/WorkerDashboard'
+import AdminDashboard from './pages/AdminDashboard'
+import Profile from './pages/Profile'
+import HowToOrder from './pages/HowToOrder'
+import Cart from './pages/Cart'
+import ServiceReviews from './pages/ServiceReviews'; 
+
+import { CartProvider, useCart } from './context/CartContext'
+
+type Profile = Database['public']['Tables']['profiles']['Row']
+
+// ✅ Komponen Badge untuk menampilkan jumlah item di keranjang
+function CartBadge() {
+  const { totalItems } = useCart()
+  if (totalItems === 0) return null
+  return (
+    <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full animate-bounce">
+      {totalItems}
+    </span>
+  )
+}
+
+function AppContent() {
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false)
+
+  useEffect(() => {
+    checkUser()
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          fetchProfile(session.user.id)
+        } else {
+          setProfile(null)
+        }
+      }
+    )
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
+
+  async function checkUser() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        await fetchProfile(session.user.id)
+      }
+    } catch (error) {
+      console.error("Gagal mengecek user:", error)
+    } finally {
+      setLoading(false) 
+    }
+  }
+
+  async function fetchProfile(userId: string) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    setProfile(data)
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setUser(null)
+    setProfile(null)
+    setMobileMenuOpen(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+          <p className="text-zinc-500 text-sm">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <BrowserRouter>
+      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <Link to="/" className="flex items-center gap-2 group">
+              <div className="w-8 h-8 rounded-lg animated-gradient flex items-center justify-center">
+                <img src="/favicon.png" alt="" className="w-8 h-8 rounded-lg object-contain" />
+              </div>
+              <span className="text-xl font-bold text-white group-hover:text-primary transition">
+                Primora
+              </span>
+            </Link>
+
+            {/* Desktop Menu */}
+            <div className="hidden md:flex items-center gap-2">
+              {user ? (
+                <>
+                  <Link to="/how-to-order" className="btn-ghost text-sm">How to Order</Link>
+                  
+                  {profile?.role === 'consumer' && (
+                    <Link to="/orders" className="btn-ghost text-sm">My Orders</Link>
+                  )}
+                  {profile?.role === 'worker' && (
+                    <Link to="/worker" className="btn-ghost text-sm">Worker Panel</Link>
+                  )}
+                  {profile?.role === 'admin' && (
+                    <Link to="/admin" className="btn-ghost text-sm">Admin Panel</Link>
+                  )}
+
+                  {/* ✅ LINK KERANJANG BELANJA (Desktop) */}
+                  <Link to="/cart" className="relative p-2 text-zinc-400 hover:text-white transition ml-2">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <CartBadge />
+                  </Link>
+
+                  <Link to="/profile" className="flex items-center gap-2 ml-2 pl-3 border-l border-border">
+                    {profile?.avatar_url ? (
+                      <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover border border-primary" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center">
+                        <span className="text-white font-bold text-xs">
+                          {profile?.full_name?.[0]?.toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-white leading-tight">{profile?.full_name || 'User'}</p>
+                      <p className="text-xs text-zinc-500 capitalize">{profile?.role || 'User'}</p>
+                    </div>
+                  </Link>
+
+                  <button onClick={handleLogout} className="btn-ghost text-sm ml-2">Sign Out</button>
+                </>
+              ) : (
+                <>
+                  <Link to="/how-to-order" className="btn-ghost text-sm">How to Order</Link>
+                  
+                  {/* ✅ LINK KERANJANG BELANJA (Guest) */}
+                  <Link to="/cart" className="relative p-2 text-zinc-400 hover:text-white transition">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <CartBadge />
+                  </Link>
+
+                  <Link to="/login" className="btn-ghost text-sm">Sign In</Link>
+                  <Link to="/register" className="bg-primary hover:bg-primary-hover text-white font-semibold px-4 py-2 rounded-lg text-sm transition-all">
+                    Register
+                  </Link>
+                </>
+              )}
+            </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-zinc-400 hover:text-white"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+              </svg>
+            </button>
+          </div>
+
+          {/* Mobile Menu Dropdown */}
+          {mobileMenuOpen && (
+            <div className="md:hidden py-4 border-t border-border space-y-2 fade-in">
+              {user ? (
+                <>
+                  <Link to="/how-to-order" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">How to Order</Link>
+                  
+                  {/* ✅ LINK KERANJANG BELANJA (Mobile) */}
+                  <Link to="/cart" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg flex items-center gap-2">
+                    <span>My Cart</span>
+                    <CartBadge />
+                  </Link>
+
+                  {profile?.role === 'consumer' && (
+                    <Link to="/orders" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">My Orders</Link>
+                  )}
+                  {profile?.role === 'worker' && (
+                    <Link to="/worker" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">Worker Panel</Link>
+                  )}
+                  {profile?.role === 'admin' && (
+                    <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">Admin Panel</Link>
+                  )}
+                  <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">My Profile</Link>
+                  <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 text-red-400 hover:bg-surface-hover rounded-lg">Sign Out</button>
+                </>
+              ) : (
+                <>
+                  <Link to="/how-to-order" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">How to Order</Link>
+                  
+                  <Link to="/cart" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg flex items-center gap-2">
+                    <span>My Cart</span>
+                    <CartBadge />
+                  </Link>
+
+                  <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-zinc-300 hover:bg-surface-hover rounded-lg">Sign In</Link>
+                  <Link to="/register" onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2 text-primary hover:bg-surface-hover rounded-lg font-medium">Register</Link>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </nav>
+
+      <Routes>
+        {/* Auth Routes */}
+        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+        <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        
+        {/* Public Routes */}
+        <Route path="/" element={<Catalog />} />
+        <Route path="/service/:id" element={<ServiceDetail />} />
+        <Route path="/how-to-order" element={<HowToOrder />} />
+        
+        {/* ✅ CART ROUTE */}
+        <Route path="/cart" element={<Cart />} />
+        
+        {/* Protected Routes */}
+        <Route path="/order/:id" element={user ? <OrderTracking /> : <Navigate to="/login" />} />
+        <Route path="/orders" element={user && profile?.role === 'consumer' ? <MyOrders /> : <Navigate to="/login" />} />
+        <Route path="/worker" element={user && profile?.role === 'worker' ? <WorkerDashboard /> : <Navigate to="/login" />} />
+        <Route path="/admin" element={user && profile?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/login" />} />
+        <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+        
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="/service/:id/reviews" element={<ServiceReviews />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
+// ✅ Bungkus seluruh aplikasi dengan CartProvider agar useCart bisa diakses di mana saja
+export default function App() {
+  return (
+    <CartProvider>
+      <AppContent />
+    </CartProvider>
+  )
+}
