@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Database } from '../types/database'
+import { BRAND } from '@meroogi/shared'
 
 // 1. Ambil tipe baris (Row) dari file database.ts yang sudah kita generate
 type Service = Database['public']['Tables']['services']['Row']
@@ -221,7 +222,7 @@ export default function Catalog() {
                 />
               </div>
               <span className="text-sm text-zinc-500">
-                © 2026 Primora. All rights reserved.
+                © 2026 {BRAND.name}. All rights reserved.
               </span>
             </div>
             <div className="flex gap-6 text-sm text-zinc-500">

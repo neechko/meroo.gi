@@ -1,6 +1,7 @@
 import { useState, FormEvent, ChangeEvent } from "react";
 import { supabase } from "../lib/supabase";
 import { Link, useNavigate } from "react-router-dom";
+import { BRAND } from '@meroogi/shared'
 
 export default function Login() {
   const [email, setEmail] = useState<string>("");
@@ -76,7 +77,7 @@ export default function Login() {
           <p className="text-zinc-500 mt-2">
             {isForgotPassword
               ? "Masukkan email Anda untuk menerima link reset."
-              : "Sign in to your Primora account"}
+              : `Sign in to your ${BRAND.name} account`}
           </p>
         </div>
 

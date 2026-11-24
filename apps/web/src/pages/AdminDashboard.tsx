@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { Database } from "../types/database";
 import { showConfirm, showAlert } from "../lib/dialog";
+import { BRAND } from '@meroogi/shared';
 
 type Service = Database["public"]["Tables"]["services"]["Row"];
 type Category = Database["public"]["Tables"]["categories"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
-// ✅ Tipe untuk Package/Service Tier (mengikuti schema database terbaru)
 type Package = Database["public"]["Tables"]["service_tiers"]["Row"] & {
   services: { name: string } | null;
 };
@@ -533,7 +533,7 @@ export default function AdminDashboard() {
           <h1 className="text-3xl font-bold text-white mb-2">
             Admin Dashboard
           </h1>
-          <p className="text-zinc-400">Manage your Primora operations</p>
+          <p className="text-zinc-400">Manage your {BRAND.name} operations</p>
         </div>
 
         {/* Stats Cards */}

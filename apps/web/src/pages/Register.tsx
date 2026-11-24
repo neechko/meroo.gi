@@ -2,6 +2,7 @@ import { useState, FormEvent, ChangeEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { Link, useNavigate } from 'react-router-dom'
 import { Database } from '../types/database'
+import { BRAND } from '@meroogi/shared'
 
 // Ambil tipe untuk insert profil (opsional, untuk autocomplete)
 type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
@@ -60,7 +61,7 @@ export default function Register() {
             />
           </div>
           <h1 className="text-3xl font-bold text-white">Create Account</h1>
-          <p className="text-zinc-500 mt-2">Join Primora and start boosting</p>
+          <p className="text-zinc-500 mt-2">Join {BRAND.name} and start boosting</p>
         </div>
 
         <div className="glass-card rounded-2xl p-8">

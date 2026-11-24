@@ -16,12 +16,12 @@ import Profile from './pages/Profile'
 import HowToOrder from './pages/HowToOrder'
 import Cart from './pages/Cart'
 import ServiceReviews from './pages/ServiceReviews'; 
+import { BRAND } from '@meroogi/shared';
 
 import { CartProvider, useCart } from './context/CartContext'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
-// ✅ Komponen Badge untuk menampilkan jumlah item di keranjang
 function CartBadge() {
   const { totalItems } = useCart()
   if (totalItems === 0) return null
@@ -108,7 +108,7 @@ function AppContent() {
                 <img src="/favicon.png" alt="" className="w-8 h-8 rounded-lg object-contain" />
               </div>
               <span className="text-xl font-bold text-white group-hover:text-primary transition">
-                Primora
+                {BRAND.name}
               </span>
             </Link>
 

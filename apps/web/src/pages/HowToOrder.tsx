@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { BRAND } from '@meroogi/shared';
 
 export default function HowToOrder() {
   const steps = [
@@ -60,7 +61,7 @@ export default function HowToOrder() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-white mb-4">How to Order</h1>
           <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
-            Ordering on Primora is simple, transparent, and secure. Follow these steps:
+            Ordering on {BRAND.name} is simple, transparent, and secure. Follow these steps:
           </p>
         </div>
 
