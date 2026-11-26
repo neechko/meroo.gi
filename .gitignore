@@ -52,6 +52,7 @@ supabase/.temp/
 Thumbs.db
 *.suo
 *.ntvs*
+*bug/
 *.njsproj
 *.sln
 *.sw?

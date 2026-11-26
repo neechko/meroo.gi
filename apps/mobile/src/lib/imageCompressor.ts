@@ -75,14 +75,18 @@ export async function pickAndCompressImage(opts: {
   const filePath = `${opts.folder}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
   const arrayBuf = base64ToArrayBuffer(b64);
 
-  const { error: upErr } = await supabase.storage
-    .from('meroogi-media')
-    .upload(filePath, arrayBuf, { contentType: 'image/jpeg', upsert: true });
+  // Gunakan bucket sesuai schema.sql ('avatars' / 'screenshots'), lalu fallback ke 'meroogi-media'
+  const primaryBucket = opts.folder === 'avatars' ? 'avatars' : 'screenshots';
+  for (const bucket of [primaryBucket, 'meroogi-media']) {
+    const { error: upErr } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, arrayBuf, { contentType: 'image/jpeg', upsert: true });
 
-  if (!upErr) {
-    const { data: pub } = supabase.storage.from('meroogi-media').getPublicUrl(filePath);
-    if (pub?.publicUrl) {
-      return { publicUrl: pub.publicUrl, originalKB, compressedKB, savedPct };
+    if (!upErr) {
+      const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath);
+      if (pub?.publicUrl) {
+        return { publicUrl: pub.publicUrl, originalKB, compressedKB, savedPct };
+      }
     }
   }
 

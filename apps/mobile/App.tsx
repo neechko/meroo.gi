@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import * as Updates from 'expo-updates';
 import { makeRedirectUri } from 'expo-auth-session';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import { Outfit_600SemiBold, Outfit_700Bold, Outfit_800ExtraBold } from '@expo-google-fonts/outfit';
 import { PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
@@ -63,6 +64,7 @@ function WallpaperLoadingScreen() {
 
 function MainApp() {
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { showToast, showDialog } = useSageFeedback();
   const [session, setSession] = useState<any>(null);
   const [booting, setBooting] = useState(true);
@@ -71,14 +73,19 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<TabKey>('home');
 
   const [services, setServices] = useState<any[]>([]);
+  const [allServices, setAllServices] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [allCategories, setAllCategories] = useState<any[]>([]);
+  const [serviceTiers, setServiceTiers] = useState<any[]>([]);
+  const [serviceRatings, setServiceRatings] = useState<Record<string, { avg: number; count: number }>>({});
   const [orders, setOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [identifier, setIdentifier] = useState('');
   const [regFullName, setRegFullName] = useState('');
   const [regUsername, setRegUsername] = useState('');
+  const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -197,11 +204,18 @@ function MainApp() {
     const uid = forcedUserId || session?.user?.id;
     if (!uid) return;
 
-    const [profRes, srvRes, catRes, ordRes] = await Promise.all([
+    const [profRes, srvRes, catRes, tierRes, revRes, ordRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
-      supabase.from('services').select('*').eq('is_active', true).order('created_at', { ascending: false }),
-      supabase.from('categories').select('*').eq('is_active', true),
-      supabase.from('orders').select('*, services(name)').order('created_at', { ascending: false }),
+      supabase.from('services').select('*').order('base_price', { ascending: true }),
+      supabase.from('categories').select('*').order('name', { ascending: true }),
+      supabase.from('service_tiers').select('*').order('fixed_price', { ascending: true }),
+      supabase.from('reviews').select('service_id, rating'),
+      supabase
+        .from('orders')
+        .select(
+          '*, services(name, category, estimated_hours), consumer:profiles!orders_consumer_id_fkey(full_name, phone), worker:profiles!orders_worker_id_fkey(full_name, phone)'
+        )
+        .order('created_at', { ascending: false }),
     ]);
 
     if (profRes.data) {
@@ -213,9 +227,43 @@ function MainApp() {
       }
     }
 
-    setServices(srvRes.data || []);
-    setCategories(catRes.data || []);
-    setOrders(ordRes.data || []);
+    const rawServices = (srvRes.data || []).filter((s: any) => !s.deleted_at);
+    setAllServices(rawServices);
+    setServices(rawServices.filter((s: any) => s.is_active !== false));
+
+    const rawCats = catRes.data || [];
+    setAllCategories(rawCats);
+    setCategories(rawCats.filter((c: any) => c.is_active !== false));
+
+    setServiceTiers(tierRes.data || []);
+
+    const ratingAcc: Record<string, { sum: number; count: number }> = {};
+    for (const r of revRes.data || []) {
+      if (!r.service_id || !r.rating) continue;
+      if (!ratingAcc[r.service_id]) ratingAcc[r.service_id] = { sum: 0, count: 0 };
+      ratingAcc[r.service_id].sum += Number(r.rating);
+      ratingAcc[r.service_id].count += 1;
+    }
+    const ratingSummary: Record<string, { avg: number; count: number }> = {};
+    for (const [sid, v] of Object.entries(ratingAcc)) {
+      ratingSummary[sid] = { avg: v.sum / v.count, count: v.count };
+    }
+    setServiceRatings(ratingSummary);
+
+    let nextOrders = ordRes.data || [];
+    if (ordRes.error) {
+      const fallbackOrd = await supabase
+        .from('orders')
+        .select('*, services(name, category, estimated_hours)')
+        .order('created_at', { ascending: false });
+      nextOrders = fallbackOrd.data || [];
+    }
+    setOrders(nextOrders);
+    setSelectedOrder((prev: any) => {
+      if (!prev) return null;
+      const updated = nextOrders.find((o: any) => o.id === prev.id);
+      return updated || prev;
+    });
 
     goApi
       .getMe()
@@ -247,6 +295,33 @@ function MainApp() {
     }
   }
 
+  async function handleForgotPassword() {
+    if (!identifier.trim()) {
+      showToast('Masukkan email atau username akun kamu terlebih dahulu.', 'error');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      let targetEmail = identifier.trim();
+      if (!targetEmail.includes('@')) {
+        const resolved = await goApi.resolveIdentifier(targetEmail);
+        targetEmail = resolved.email;
+      }
+      const { error } = await supabase.auth.resetPasswordForEmail(targetEmail);
+      if (error) throw error;
+      showDialog({
+        title: 'Link Reset Terkirim',
+        message: `Link reset password sudah dikirim ke ${targetEmail}. Silakan cek inbox atau folder spam.`,
+        type: 'success',
+      });
+      setAuthMode('login');
+    } catch (e: any) {
+      showDialog({ title: 'Gagal Reset Password', message: e.message || 'Pastikan email terdaftar.', type: 'error' });
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
   async function handleRegister() {
     if (!regFullName.trim() || !regUsername.trim() || !regEmail.trim() || password.length < 6) {
       showToast('Isi Nama, Username, Email & Password min. 6 karakter.', 'error');
@@ -259,10 +334,23 @@ function MainApp() {
         email: regEmail.trim(),
         password,
         options: {
-          data: { full_name: regFullName.trim(), username: cleanUsername },
+          data: {
+            full_name: regFullName.trim(),
+            username: cleanUsername,
+            phone: regPhone.trim() || null,
+          },
         },
       });
       if (error) throw error;
+      if (data.session?.user?.id) {
+        await supabase
+          .from('profiles')
+          .update({
+            username: cleanUsername,
+            ...(regPhone.trim() ? { phone: regPhone.trim(), contact_info: regPhone.trim() } : {}),
+          } as any)
+          .eq('id', data.session.user.id);
+      }
       if (!data.session) {
         showDialog({
           title: 'Pendaftaran Berhasil',
@@ -382,8 +470,43 @@ function MainApp() {
                   value={password}
                   onChangeText={setPassword}
                 />
+                <TouchableOpacity
+                  style={{ alignSelf: 'flex-end' }}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setAuthMode('forgot');
+                  }}
+                >
+                  <Text style={styles.forgotLink}>Lupa Password?</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={authLoading}>
                   <Text style={styles.loginBtnText}>{authLoading ? 'Memproses...' : 'Masuk'}</Text>
+                </TouchableOpacity>
+              </>
+            ) : authMode === 'forgot' ? (
+              <>
+                <Text style={styles.forgotHint}>
+                  Masukkan email atau username terdaftar untuk menerima link reset password.
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email atau Username"
+                  placeholderTextColor={SAGE.textSecondary}
+                  autoCapitalize="none"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                />
+                <TouchableOpacity style={styles.loginBtn} onPress={handleForgotPassword} disabled={authLoading}>
+                  <Text style={styles.loginBtnText}>{authLoading ? 'Mengirim...' : 'Kirim Link Reset Password'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ alignSelf: 'center', marginTop: 4 }}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setAuthMode('login');
+                  }}
+                >
+                  <Text style={styles.forgotLink}>← Kembali ke Masuk</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -402,6 +525,14 @@ function MainApp() {
                   autoCapitalize="none"
                   value={regUsername}
                   onChangeText={setRegUsername}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="No. WhatsApp (contoh: 0812xxx)"
+                  placeholderTextColor={SAGE.textSecondary}
+                  keyboardType="phone-pad"
+                  value={regPhone}
+                  onChangeText={setRegPhone}
                 />
                 <TextInput
                   style={styles.input}
@@ -500,18 +631,26 @@ function MainApp() {
             {item.key === 'catalog' && (
               <CatalogScreen
                 userId={session.user.id}
+                role={role}
                 services={services}
                 categories={categories}
-                onOrderCreated={() => syncWorkspace()}
+                serviceTiers={serviceTiers.filter((t) => t.is_active !== false)}
+                serviceRatings={serviceRatings}
+                onOrderCreated={() => {
+                  syncWorkspace();
+                  goToTab('orders');
+                }}
               />
             )}
             {item.key === 'orders' && (
-              <OrdersScreen orders={myOrders} onSelectOrder={setSelectedOrder} />
+              <OrdersScreen orders={myOrders} onSelectOrder={setSelectedOrder} onGoCatalog={() => goToTab('catalog')} />
             )}
             {item.key === 'admin' && role === 'admin' && (
               <AdminScreen
                 allOrders={orders}
-                services={services}
+                services={allServices}
+                categories={allCategories}
+                serviceTiers={serviceTiers}
                 onRefresh={() => syncWorkspace()}
                 onSelectOrder={setSelectedOrder}
               />
@@ -519,9 +658,11 @@ function MainApp() {
             {item.key === 'worker' && (role === 'worker' || role === 'admin') && (
               <WorkerScreen
                 userId={session.user.id}
+                profile={profile}
                 assignedOrders={workerOrders}
                 onSelectOrder={setSelectedOrder}
                 onRefresh={() => syncWorkspace()}
+                onProfileUpdated={(patch) => setProfile((prev: any) => ({ ...(prev || {}), ...patch }))}
                 onOptimisticOrderUpdate={(oid, patch) =>
                   setOrders((prev) => prev.map((o) => (o.id === oid ? { ...o, ...patch } : o)))
                 }
@@ -545,6 +686,7 @@ function MainApp() {
         style={[
           styles.tabBar,
           {
+            bottom: Math.max(12, insets.bottom + 6),
             opacity: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
             transform: [{ translateY: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 110] }) }],
           },
@@ -615,9 +757,11 @@ export default function App() {
   }
 
   return (
-    <SageFeedbackProvider>
-      <MainApp />
-    </SageFeedbackProvider>
+    <SafeAreaProvider>
+      <SageFeedbackProvider>
+        <MainApp />
+      </SageFeedbackProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -658,6 +802,8 @@ const styles = StyleSheet.create({
   },
   loginBtn: { backgroundColor: SAGE.primary, borderRadius: 16, paddingVertical: 14, alignItems: 'center', marginTop: 2 },
   loginBtnText: { fontFamily: FONTS.displayBold, color: '#FFF', fontSize: 15 },
+  forgotLink: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.primaryDark },
+  forgotHint: { fontFamily: FONTS.body, fontSize: 12, color: SAGE.textSecondary, lineHeight: 18 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 },
   dividerLine: { flex: 1, height: 1, backgroundColor: SAGE.border },
   dividerText: { fontFamily: FONTS.bodyMedium, fontSize: 12, color: SAGE.textSecondary },

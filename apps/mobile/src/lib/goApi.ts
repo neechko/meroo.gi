@@ -97,12 +97,12 @@ export const goApi = {
   requestVerificationCode: (orderId: string) =>
     goFetch('/v1/orders/' + orderId + '/credentials/verification', {
       method: 'POST',
-      body: JSON.stringify({ action: 'request_code' }),
+      body: JSON.stringify({ action: 'request' }),
     }),
   submitVerificationCode: (orderId: string, code: string) =>
     goFetch('/v1/orders/' + orderId + '/credentials/verification', {
       method: 'POST',
-      body: JSON.stringify({ action: 'submit_code', code }),
+      body: JSON.stringify({ action: 'submit', code }),
     }),
   listChecklists: (orderId: string, date: string) =>
     goFetch<any[]>('/v1/orders/' + orderId + '/checklists?date=' + encodeURIComponent(date)),
@@ -110,8 +110,11 @@ export const goApi = {
     orderId: string,
     body: { task_date: string; cadence: string; task_key: string; task_label: string; target_detail?: string }
   ) => goFetch('/v1/orders/' + orderId + '/checklists', { method: 'POST', body: JSON.stringify(body) }),
-  toggleChecklist: (itemId: string, isDone: boolean) =>
-    goFetch('/v1/checklists/' + itemId, { method: 'PATCH', body: JSON.stringify({ is_done: isDone }) }),
+  toggleChecklist: (itemId: string, isDone: boolean, targetDetail?: string) =>
+    goFetch('/v1/checklists/' + itemId, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_done: isDone, ...(targetDetail ? { target_detail: targetDetail } : {}) }),
+    }),
   postProgress: (orderId: string, body: { percentage: number; notes: string; screenshot_url?: string }) =>
     goFetch<{ status: string; current_percentage: number }>('/v1/orders/' + orderId + '/progress', {
       method: 'POST',
@@ -144,6 +147,8 @@ export const goApi = {
       password?: string;
       seniority_level?: string;
       max_capacity?: number;
+      is_available?: boolean;
+      is_on_leave?: boolean;
     }
   ) => goFetch('/v1/admin/users/' + userId + '/account', { method: 'PATCH', body: JSON.stringify(body) }),
   listWorkerInvites: () => goFetch<any[]>('/v1/admin/workers/invites'),

@@ -5,6 +5,7 @@ import {
   Animated, Easing, LayoutAnimation, UIManager, PanResponder, Keyboard,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SAGE, FONTS, CHECKLIST_PRESETS, formatIDR } from '../theme/sage';
 import { goApi } from '../lib/goApi';
 import { supabase } from '../lib/supabase';
@@ -26,8 +27,15 @@ interface Props {
 type SectionKey = 'checklist' | 'vault' | 'progress' | 'chat';
 
 export function OrderDetailModal({ visible, order, userId, role, onClose, onRefresh }: Props) {
+  const insets = useSafeAreaInsets();
   const { showToast, showDialog } = useSageFeedback();
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
   const [checklists, setChecklists] = useState<any[]>([]);
   const [customTask, setCustomTask] = useState('');
   const [customCadence, setCustomCadence] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -40,6 +48,15 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   const [receiptData, setReceiptData] = useState<any>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptRender, setReceiptRender] = useState(false);
+
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  const [existingReview, setExistingReview] = useState<any>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [zoomRender, setZoomRender] = useState(false);
@@ -296,13 +313,31 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     }
   }, [visible, order?.id, selectedDate]);
 
+  // Live chat polling (3.5 detik, sinkron dengan OrderChat web)
+  useEffect(() => {
+    if (!visible || !order?.id) return;
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('messages')
+          .select('*, sender:profiles(full_name, role)')
+          .eq('order_id', order.id)
+          .order('created_at', { ascending: true });
+        if (Array.isArray(data)) {
+          setMessages(data);
+        }
+      } catch {}
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [visible, order?.id]);
+
   async function loadAll() {
     if (!order?.id) return;
     const seq = ++reqSeqRef.current;
     const cacheKey = order.id + ':' + selectedDate;
 
     try {
-      const [clRes, vlt, progRes, msgRes] = await Promise.all([
+      const [clRes, vlt, progRes, msgRes, revRes] = await Promise.all([
         (supabase.from('order_checklists' as any) as any)
           .select('*')
           .eq('order_id', order.id)
@@ -311,6 +346,9 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
         goApi.getCredentials(order.id).catch(() => null),
         supabase.from('progress_updates').select('*').eq('order_id', order.id).order('created_at', { ascending: false }),
         supabase.from('messages').select('*, sender:profiles(full_name, role)').eq('order_id', order.id).order('created_at', { ascending: true }),
+        order.status === 'completed' && isOwner
+          ? supabase.from('reviews').select('*').eq('order_id', order.id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (seq !== reqSeqRef.current) return;
@@ -330,6 +368,9 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
       if (!msgRes.error && Array.isArray(msgRes.data)) {
         setMessages(msgRes.data);
       }
+      if (!revRes?.error) {
+        setExistingReview(revRes?.data || null);
+      }
     } catch {}
   }
 
@@ -344,9 +385,9 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
 
   function shiftDate(days: number) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + days);
-    const nextDate = d.toISOString().slice(0, 10);
+    const [y, m, d] = selectedDate.split('-').map((n) => Number(n));
+    const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + days));
+    const nextDate = dt.toISOString().slice(0, 10);
     const nextKey = order.id + ':' + nextDate;
     setChecklists(checklistCacheRef.current[nextKey] || []);
     setSelectedDate(nextDate);
@@ -389,23 +430,62 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   }
 
   function handleCancelOrder() {
-    showDialog({
-      title: 'Batalkan Pesanan?',
-      message: 'Pesanan akan dibatalkan dan kredensial vault dihapus otomatis.',
-      type: 'error',
-      cancelText: 'Tutup',
-      confirmText: 'Ya, Batalkan',
-      onConfirm: async () => {
-        try {
-          await goApi.cancelOrder(order.id, 'Dibatalkan oleh Costumer via Aplikasi');
-          showToast('Pesanan berhasil dibatalkan', 'success');
-          onRefresh();
-          handleAnimatedClose();
-        } catch (e: any) {
-          showToast(e.message || 'Gagal membatalkan', 'error');
-        }
-      },
-    });
+    setCancelReason('');
+    setShowCancelModal(true);
+  }
+
+  async function confirmCancelOrder() {
+    setCancelling(true);
+    const reasonText = cancelReason.trim() || 'Dibatalkan oleh Costumer via Aplikasi';
+    try {
+      await goApi.cancelOrder(order.id, reasonText).catch(async () => {
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            status: 'cancelled',
+            cancel_reason: reasonText,
+            cancelled_at: new Date().toISOString(),
+          })
+          .eq('id', order.id);
+        if (error) throw error;
+      });
+      setShowCancelModal(false);
+      showToast('Pesanan berhasil dibatalkan', 'success');
+      onRefresh();
+      handleAnimatedClose();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal membatalkan', 'error');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  async function handleSubmitReview() {
+    if (!order || submittingReview) return;
+    setSubmittingReview(true);
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .insert({
+          order_id: order.id,
+          reviewer_id: userId,
+          reviewee_id: order.worker_id || null,
+          service_id: order.service_id,
+          rating: reviewRating,
+          comment: reviewComment.trim() || null,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setExistingReview(data);
+      setReviewComment('');
+      showToast('Terima kasih! Ulasan kamu berhasil dikirim.', 'success');
+      onRefresh();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal mengirim ulasan', 'error');
+    } finally {
+      setSubmittingReview(false);
+    }
   }
 
   async function handleSaveVault() {
@@ -574,17 +654,22 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     if (!chatText.trim()) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     const text = chatText.trim();
+    const tempId = 'msg-' + Date.now();
     setChatText('');
     setMessages((prev) => [
       ...prev,
-      { id: 'msg-' + Date.now(), content: text, sender: { full_name: 'Saya' } },
+      { id: tempId, sender_id: userId, content: text, created_at: new Date().toISOString(), sender: { full_name: 'Saya', role } },
     ]);
     focusSection('chat', true);
-    await supabase.from('messages').insert({
+    const { error } = await supabase.from('messages').insert({
       order_id: order.id,
       sender_id: userId,
       content: text,
     });
+    if (error) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      showToast('Gagal mengirim pesan: ' + error.message, 'error');
+    }
   }
 
   if (!order) return null;
@@ -616,7 +701,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     <Modal visible={renderModal} transparent animationType="none" statusBarTranslucent={false} onRequestClose={handleAnimatedClose}>
       <Animated.View style={[styles.modalBackdrop, { opacity: backdropAnim }]}>
         {/* Kontainer luar mengecil sebesar keyboardHeight agar ScrollView tidak pernah tertutup keyboard */}
-        <Animated.View style={[styles.sheetWrapper, { paddingBottom: keyboardHeight, transform: [{ translateY: sheetAnim }] }]}>
+        <Animated.View style={[styles.sheetWrapper, { paddingTop: Math.max(8, insets.top), paddingBottom: keyboardHeight, transform: [{ translateY: sheetAnim }] }]}>
           <View style={styles.container}>
             <View {...detailPanResponder.panHandlers} style={styles.headerWrap}>
               <View style={styles.sheetDragPill} />
@@ -650,6 +735,64 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 )}
               </View>
 
+              {/* Ringkasan & Tracker Deadline Otomatis (Sinkron dengan Web OrderTracking) */}
+              <View style={styles.card}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={styles.cardHead}>
+                    <FontAwesome5 name="clock" size={14} color={SAGE.primary} />
+                    <Text style={styles.cardTitle}>Ringkasan & Target Deadline</Text>
+                  </View>
+                  {!!order.expected_completion_at && order.status !== 'completed' && order.status !== 'cancelled' && (
+                    <Text
+                      style={[
+                        styles.deadlineBadge,
+                        Date.now() > new Date(order.expected_completion_at).getTime()
+                          ? styles.deadlineOverdue
+                          : styles.deadlineOnTrack,
+                      ]}
+                    >
+                      {Date.now() > new Date(order.expected_completion_at).getTime() ? 'OVERDUE' : 'ON TRACK'}
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.infoGrid}>
+                  <Text style={styles.infoLine}>Costumer: {order.consumer?.full_name || '-'} {order.consumer?.phone ? `(${order.consumer.phone})` : ''}</Text>
+                  <Text style={styles.infoLine}>Worker: {order.worker?.full_name || 'Belum ditugaskan'}</Text>
+                  <Text style={styles.infoLine}>Estimasi Durasi: {order.total_estimated_hours || order.services?.estimated_hours || 1} Jam</Text>
+                  {!!order.assigned_at && (
+                    <Text style={styles.infoLine}>Mulai Dikerjakan: {new Date(order.assigned_at).toLocaleString('id-ID')}</Text>
+                  )}
+                  {!!order.expected_completion_at && order.status !== 'completed' && order.status !== 'cancelled' && (
+                    <>
+                      <Text style={styles.infoLine}>Target Selesai: {new Date(order.expected_completion_at).toLocaleString('id-ID')}</Text>
+                      {(() => {
+                        const start = order.assigned_at ? new Date(order.assigned_at).getTime() : new Date(order.created_at).getTime();
+                        const end = new Date(order.expected_completion_at).getTime();
+                        const pct = end > start ? Math.min(100, Math.max(0, Math.round(((Date.now() - start) / (end - start)) * 100))) : 0;
+                        return (
+                          <View style={styles.elapsedBg}>
+                            <View style={[styles.elapsedFill, { width: `${pct}%`, backgroundColor: pct >= 100 ? SAGE.danger : pct >= 75 ? SAGE.accentWarm : SAGE.primary }]} />
+                          </View>
+                        );
+                      })()}
+                    </>
+                  )}
+                  {!!order.notes && (
+                    <View style={styles.notesHighlight}>
+                      <Text style={styles.notesHighlightText}>Catatan: {order.notes}</Text>
+                    </View>
+                  )}
+                  {order.status === 'cancelled' && (
+                    <View style={styles.cancelledBanner}>
+                      <Text style={styles.cancelledTitle}>Pesanan Dibatalkan</Text>
+                      {!!order.cancel_reason && <Text style={styles.cancelledText}>Alasan: "{order.cancel_reason}"</Text>}
+                      {!!order.cancelled_at && <Text style={styles.cancelledText}>{new Date(order.cancelled_at).toLocaleString('id-ID')}</Text>}
+                    </View>
+                  )}
+                </View>
+              </View>
+
               {/* Panel 1: Kalender & Checklist */}
               <Animated.View
                 onLayout={(e) => { sectionOffsets.current.checklist = e.nativeEvent.layout.y; }}
@@ -678,13 +821,16 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                     </View>
 
                     {checklists.length === 0 ? (
-                      <Text style={styles.emptyHint}>Belum ada checklist pada tanggal ini. Pilih preset di bawah untuk menambahkan.</Text>
+                      <Text style={styles.emptyHint}>
+                        {isStaff ? 'Belum ada checklist pada tanggal ini. Pilih preset di bawah untuk menambahkan.' : 'Belum ada checklist aktivitas untuk tanggal ini.'}
+                      </Text>
                     ) : (
                       checklists.map((item) => (
                         <View key={item.id} style={styles.checkRow}>
                           <TouchableOpacity
+                            disabled={!isStaff}
                             style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
-                            onPress={() => handleToggleCheck(item)}
+                            onPress={() => isStaff && handleToggleCheck(item)}
                           >
                             <FontAwesome5
                               name={item.is_done ? 'check-square' : 'square'}
@@ -699,13 +845,16 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                               </Text>
                             </View>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.delCheckBtn} onPress={() => handleConfirmDeleteCheck(item)}>
-                            <FontAwesome5 name="trash-alt" size={13} color={SAGE.danger} />
-                          </TouchableOpacity>
+                          {isStaff && (
+                            <TouchableOpacity style={styles.delCheckBtn} onPress={() => handleConfirmDeleteCheck(item)}>
+                              <FontAwesome5 name="trash-alt" size={13} color={SAGE.danger} />
+                            </TouchableOpacity>
+                          )}
                         </View>
                       ))
                     )}
 
+                    {isStaff && (
                     <View style={styles.staffBox}>
                       <Text style={styles.subLabel}>Tambah Target / Checklist Harian & Mingguan:</Text>
                       <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
@@ -738,6 +887,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                         </TouchableOpacity>
                       </View>
                     </View>
+                    )}
                   </View>
                 )}
               </Animated.View>
@@ -924,8 +1074,17 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 {!collapsed.chat && (
                   <View style={{ gap: 8 }}>
                     {messages.map((m) => (
-                      <View key={m.id} style={styles.msgBubble}>
-                        <Text style={styles.msgSender}>{m.sender?.full_name || 'Pengguna'}</Text>
+                      <View key={m.id} style={[styles.msgBubble, m.sender_id === userId && styles.msgBubbleMe]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={styles.msgSender}>
+                            {m.sender?.full_name || 'Pengguna'} {m.sender?.role ? `(${m.sender.role.toUpperCase()})` : ''}
+                          </Text>
+                          {!!m.created_at && (
+                            <Text style={styles.msgTime}>
+                              {new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          )}
+                        </View>
                         <Text style={styles.msgBody}>{m.content}</Text>
                       </View>
                     ))}
@@ -945,7 +1104,79 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                   </View>
                 )}
               </Animated.View>
+
+              {/* Panel 5: Ulasan & Rating Costumer (Setelah Order Selesai) */}
+              {order.status === 'completed' && isOwner && (
+                <View style={styles.card}>
+                  <View style={styles.cardHead}>
+                    <FontAwesome5 name="star" solid size={14} color={SAGE.accentWarm} />
+                    <Text style={styles.cardTitle}>{existingReview ? 'Ulasan Kamu' : 'Beri Rating & Ulasan'}</Text>
+                  </View>
+                  {existingReview ? (
+                    <View style={styles.notesHighlight}>
+                      <Text style={styles.starRowText}>{'★'.repeat(existingReview.rating || 0)} ({existingReview.rating}/5)</Text>
+                      {!!existingReview.comment && <Text style={styles.msgBody}>"{existingReview.comment}"</Text>}
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <TouchableOpacity key={star} onPress={() => setReviewRating(star)} style={{ padding: 4 }}>
+                            <FontAwesome5
+                              name="star"
+                              solid
+                              size={22}
+                              color={star <= reviewRating ? SAGE.accentWarm : SAGE.border}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Bagikan pengalaman pengerjaan order ini (opsional)..."
+                        placeholderTextColor={SAGE.textSecondary}
+                        value={reviewComment}
+                        onChangeText={setReviewComment}
+                      />
+                      <TouchableOpacity style={styles.primaryBtn} onPress={handleSubmitReview} disabled={submittingReview}>
+                        <Text style={styles.primaryBtnText}>{submittingReview ? 'Mengirim...' : 'Kirim Ulasan'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
             </ScrollView>
+
+            {/* Modal Alasan Pembatalan */}
+            <Modal visible={showCancelModal} transparent animationType="fade" onRequestClose={() => setShowCancelModal(false)}>
+              <View style={[styles.receiptOverlay, { paddingBottom: Math.max(20, keyboardHeight) }]}>
+                <View style={styles.receiptPaper}>
+                  <Text style={styles.receiptBrand}>Batalkan Pesanan?</Text>
+                  <Text style={styles.subLabel}>
+                    Pesanan akan dibatalkan dan password vault akan langsung terhapus otomatis.
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Alasan pembatalan (opsional)..."
+                    placeholderTextColor={SAGE.textSecondary}
+                    value={cancelReason}
+                    onChangeText={setCancelReason}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <TouchableOpacity style={[styles.secondaryBtn, { flex: 1, marginTop: 0 }]} onPress={() => setShowCancelModal(false)}>
+                      <Text style={styles.secondaryBtnText}>Tutup</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.primaryBtn, { flex: 1, backgroundColor: SAGE.danger }]}
+                      onPress={confirmCancelOrder}
+                      disabled={cancelling}
+                    >
+                      <Text style={styles.primaryBtnText}>{cancelling ? 'Membatalkan...' : 'Ya, Batalkan'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
 
             {/* Modal Struk Resmi */}
             <Modal visible={receiptRender} transparent animationType="none" onRequestClose={() => setShowReceiptModal(false)}>
@@ -1176,8 +1407,23 @@ const styles = StyleSheet.create({
   progScreenshot: { width: '100%', height: 150, borderRadius: 14, marginTop: 4 },
   editIconBtn: { backgroundColor: SAGE.surfaceSoft, padding: 8, borderRadius: 10 },
   msgBubble: { backgroundColor: SAGE.surfaceSoft, padding: 10, borderRadius: 12 },
+  msgBubbleMe: { backgroundColor: '#E1F0EA', borderWidth: 1, borderColor: SAGE.border },
   msgSender: { fontFamily: FONTS.bodyBold, fontSize: 11, color: SAGE.primaryDark },
+  msgTime: { fontFamily: FONTS.mono, fontSize: 10, color: SAGE.textSecondary },
   msgBody: { fontFamily: FONTS.body, fontSize: 13, color: SAGE.textPrimary, marginTop: 2 },
+  deadlineBadge: { fontFamily: FONTS.mono, fontSize: 9, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, overflow: 'hidden' },
+  deadlineOverdue: { backgroundColor: SAGE.dangerSoft, color: SAGE.danger },
+  deadlineOnTrack: { backgroundColor: SAGE.successSoft, color: SAGE.success },
+  infoGrid: { gap: 4 },
+  infoLine: { fontFamily: FONTS.body, fontSize: 12, color: SAGE.textSecondary },
+  elapsedBg: { height: 7, backgroundColor: SAGE.surfaceSoft, borderRadius: 6, overflow: 'hidden', marginTop: 4 },
+  elapsedFill: { height: 7, borderRadius: 6 },
+  notesHighlight: { backgroundColor: SAGE.surfaceSoft, padding: 10, borderRadius: 12, marginTop: 4, gap: 2 },
+  notesHighlightText: { fontFamily: FONTS.body, fontSize: 12, color: SAGE.textPrimary },
+  starRowText: { fontFamily: FONTS.displayBold, fontSize: 14, color: SAGE.accentWarm },
+  cancelledBanner: { backgroundColor: SAGE.dangerSoft, padding: 10, borderRadius: 12, marginTop: 4, gap: 2 },
+  cancelledTitle: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.danger },
+  cancelledText: { fontFamily: FONTS.body, fontSize: 11, color: SAGE.danger },
   receiptOverlay: { flex: 1, backgroundColor: 'rgba(26,46,41,0.55)', justifyContent: 'center', padding: 20 },
   receiptPaper: {
     backgroundColor: '#FFFDF9',

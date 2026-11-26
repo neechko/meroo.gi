@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, Image, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, roleLabel } from '../theme/sage';
 import { supabase } from '../lib/supabase';
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function ProfileScreen({ profile, role, onGoWorker, onGoAdmin, onProfileUpdated }: Props) {
+  const insets = useSafeAreaInsets();
   const { showToast } = useSageFeedback();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [username, setUsername] = useState(profile?.username || '');
@@ -94,7 +96,7 @@ export function ProfileScreen({ profile, role, onGoWorker, onGoAdmin, onProfileU
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(46, insets.top + 12) }]}>
         <Text style={styles.title}>Profil & Akun Saya</Text>
         <Text style={styles.sub}>Kelola foto profil, username login, & kontak</Text>
       </View>

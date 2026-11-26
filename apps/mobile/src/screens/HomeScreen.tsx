@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, ScrollView, Image, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, Image, Modal, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, formatIDR, roleLabel } from '../theme/sage';
 import { SanctuaryPond } from '../components/SanctuaryPond';
@@ -23,10 +24,19 @@ interface Props {
 }
 
 export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, onGoCatalog, onGoProfile }: Props) {
-  const activeOrders = orders.filter((o) => o.status === 'paid' || o.status === 'in_progress');
+  const insets = useSafeAreaInsets();
+  const [showGuide, setShowGuide] = useState(false);
+
+  const activeOrders = orders.filter((o) => o.status === 'pending' || o.status === 'paid' || o.status === 'in_progress');
   const inProgressOrders = activeOrders.filter((o) => o.status === 'in_progress' || (o.current_percentage || 0) > 0);
   const completedCount = orders.filter((o) => o.status === 'completed').length;
   const featured = inProgressOrders[0] || activeOrders[0] || orders[0];
+
+  const isOverdue = (ord: any) =>
+    !!ord?.expected_completion_at &&
+    ord.status !== 'completed' &&
+    ord.status !== 'cancelled' &&
+    Date.now() > new Date(ord.expected_completion_at).getTime();
 
   const displayPct =
     inProgressOrders.length > 0
@@ -45,7 +55,11 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
   const initials = (profile?.full_name || 'M').slice(0, 1).toUpperCase();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: Math.max(46, insets.top + 12) }]}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.topBar}>
         <SpringTouchable style={styles.userLeft} onPress={onGoProfile}>
           {profile?.avatar_url ? (
@@ -66,9 +80,14 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
           </View>
         </SpringTouchable>
 
-        <SpinTouchable style={styles.refreshBtn} onPress={onRefresh}>
-          <FontAwesome5 name="sync-alt" size={15} color={SAGE.primaryDark} />
-        </SpinTouchable>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <SpringTouchable style={styles.refreshBtn} onPress={() => setShowGuide(true)}>
+            <FontAwesome5 name="question-circle" size={15} color={SAGE.primaryDark} />
+          </SpringTouchable>
+          <SpinTouchable style={styles.refreshBtn} onPress={onRefresh}>
+            <FontAwesome5 name="sync-alt" size={15} color={SAGE.primaryDark} />
+          </SpinTouchable>
+        </View>
       </View>
 
       <StaggerItem index={0}>
@@ -95,6 +114,7 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
                   active={featured.status === 'in_progress' || featured.status === 'paid'}
                 />
                 <Text style={styles.activeTitle} numberOfLines={1}>{featured.services?.name || 'Pesanan Aktif'}</Text>
+                {isOverdue(featured) && <Text style={styles.overdueBadge}>OVERDUE</Text>}
               </View>
               <Text style={styles.activeSub} numberOfLines={1}>
                 {`UID ${featured.game_uid} \u2022 ${featured.status.toUpperCase()} \u2022 ${formatIDR(featured.total_price)}`}
@@ -122,7 +142,10 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
                 <AnimatedCounter value={ord.current_percentage || 0} suffix="%" duration={850} style={styles.pctBadgeText} />
               </View>
               <View style={{ flex: 1, gap: 4 }}>
-                <Text style={styles.orderName}>{ord.services?.name || 'Layanan'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.orderName} numberOfLines={1}>{ord.services?.name || 'Layanan'}</Text>
+                  {isOverdue(ord) && <Text style={styles.overdueBadge}>OVERDUE</Text>}
+                </View>
                 <Text style={styles.orderMeta}>
                   {`UID ${ord.game_uid} \u2022 ${ord.game_server}`}
                 </Text>
@@ -133,6 +156,42 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
           </StaggerItem>
         );
       })}
+
+      <Modal visible={showGuide} transparent animationType="slide" onRequestClose={() => setShowGuide(false)}>
+        <View style={styles.guideBackdrop}>
+          <View style={[styles.guideCard, { paddingBottom: Math.max(20, insets.bottom + 14) }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.guideTitle}>Cara Order & Ketentuan Layanan</Text>
+              <TouchableOpacity onPress={() => setShowGuide(false)}>
+                <FontAwesome5 name="times" size={18} color={SAGE.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 10 }}>
+              {[
+                { no: '01', t: 'Pilih Layanan & Paket', d: 'Di tab Katalog, pilih layanan dan kombinasikan satu atau beberapa paket (tier) dalam satu order.' },
+                { no: '02', t: 'Isi UID, Server & Catatan', d: 'Masukkan UID Genshin, pilih Server (Asia/America/Europe/TW), dan tambahkan catatan target karakter/resin.' },
+                { no: '03', t: 'Keranjang atau Pesan Langsung', d: 'Masukkan beberapa layanan ke Keranjang untuk checkout sekaligus, atau langsung buat pesanan + simpan Vault AES-256.' },
+                { no: '04', t: 'Pantau Progres, Checklist & Chat', d: 'Worker mengerjakan order sesuai deadline. Pantau checklist harian, screenshot progres, dan kode 2FA di Detail Pesanan.' },
+                { no: '05', t: 'Selesai & Beri Ulasan', d: 'Setelah progres 100%, kredensial vault terhapus otomatis dan kamu dapat memberi rating serta ulasan.' },
+              ].map((s) => (
+                <View key={s.no} style={styles.guideStep}>
+                  <Text style={styles.guideNo}>{s.no}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.guideStepTitle}>{s.t}</Text>
+                    <Text style={styles.guideStepDesc}>{s.d}</Text>
+                  </View>
+                </View>
+              ))}
+              <View style={styles.disclaimerBox}>
+                <Text style={styles.disclaimerTitle}>Disclaimer Layanan Joki</Text>
+                <Text style={styles.disclaimerText}>
+                  Layanan ini 100% dikerjakan manual tanpa bot/cheat dan tidak berafiliasi dengan developer game. Kami menjaga keamanan maksimal, namun risiko kebijakan pihak game tetap ditanggung pengguna.
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -208,7 +267,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pctBadgeText: { fontFamily: FONTS.mono, fontSize: 12, color: SAGE.primaryDark },
-  orderName: { fontFamily: FONTS.bodyBold, fontSize: 14, color: SAGE.textPrimary },
+  orderName: { fontFamily: FONTS.bodyBold, fontSize: 14, color: SAGE.textPrimary, flexShrink: 1 },
   orderMeta: { fontFamily: FONTS.mono, fontSize: 11, color: SAGE.textSecondary },
   orderPrice: { fontFamily: FONTS.displayBold, fontSize: 14, color: SAGE.primaryDark },
+  overdueBadge: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: SAGE.danger,
+    backgroundColor: SAGE.dangerSoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  guideBackdrop: { flex: 1, backgroundColor: 'rgba(26,46,41,0.48)', justifyContent: 'flex-end' },
+  guideCard: { backgroundColor: SAGE.surfaceCard, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 12 },
+  guideTitle: { fontFamily: FONTS.displayBold, fontSize: 17, color: SAGE.textPrimary },
+  guideStep: { flexDirection: 'row', gap: 10, backgroundColor: '#FFF', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: SAGE.border },
+  guideNo: { fontFamily: FONTS.mono, fontSize: 12, color: SAGE.primaryDark, backgroundColor: SAGE.surfaceSoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start' },
+  guideStepTitle: { fontFamily: FONTS.bodyBold, fontSize: 13, color: SAGE.textPrimary },
+  guideStepDesc: { fontFamily: FONTS.body, fontSize: 12, color: SAGE.textSecondary, marginTop: 2, lineHeight: 17 },
+  disclaimerBox: { backgroundColor: '#FFF7E8', padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#F3D299', gap: 4 },
+  disclaimerTitle: { fontFamily: FONTS.bodyBold, fontSize: 12, color: '#9B6515' },
+  disclaimerText: { fontFamily: FONTS.body, fontSize: 11, color: '#7D5312', lineHeight: 16 },
 });
