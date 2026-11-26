@@ -14,6 +14,8 @@ import {
   Animated,
   Easing,
   LayoutAnimation,
+  PanResponder,
+  Keyboard,
 } from 'react-native';
 import { X, Check, ShieldCheck } from 'lucide-react-native';
 import { formatIDR, formatEstimatedHours } from '@meroogi/shared';
@@ -54,14 +56,74 @@ export function OrderBottomSheetModal({
   const [submitting, setSubmitting] = useState(false);
 
   const [renderModal, setRenderModal] = useState(visible);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const backdropAnim = useRef(new Animated.Value(0)).current;
-  const sheetAnim = useRef(new Animated.Value(480)).current;
+  const sheetAnim = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates?.height || 0));
+    const s2 = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      s1.remove();
+      s2.remove();
+    };
+  }, []);
+
+  function dismissWithAnimation() {
+    Keyboard.dismiss();
+    setKeyboardHeight(0);
+    Animated.parallel([
+      Animated.timing(backdropAnim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(sheetAnim, {
+        toValue: 540,
+        duration: 210,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) {
+        setRenderModal(false);
+        onClose();
+      }
+    });
+  }
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 6 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) {
+          sheetAnim.setValue(gs.dy);
+          backdropAnim.setValue(Math.max(0, 1 - gs.dy / 420));
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 110 || gs.vy > 0.65) {
+          dismissWithAnimation();
+        } else {
+          Animated.parallel([
+            Animated.spring(sheetAnim, { toValue: 0, speed: 22, bounciness: 6, useNativeDriver: true }),
+            Animated.timing(backdropAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
+          ]).start();
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     if (visible) {
       setRenderModal(true);
       backdropAnim.setValue(0);
-      sheetAnim.setValue(460);
+      sheetAnim.setValue(480);
       Animated.parallel([
         Animated.timing(backdropAnim, {
           toValue: 1,
@@ -77,6 +139,7 @@ export function OrderBottomSheetModal({
         }),
       ]).start();
     } else if (renderModal) {
+      setKeyboardHeight(0);
       Animated.parallel([
         Animated.timing(backdropAnim, {
           toValue: 0,
@@ -85,7 +148,7 @@ export function OrderBottomSheetModal({
           useNativeDriver: true,
         }),
         Animated.timing(sheetAnim, {
-          toValue: 480,
+          toValue: 520,
           duration: 200,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
@@ -95,28 +158,6 @@ export function OrderBottomSheetModal({
       });
     }
   }, [visible]);
-
-  function handleAnimatedClose() {
-    Animated.parallel([
-      Animated.timing(backdropAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.timing(sheetAnim, {
-        toValue: 480,
-        duration: 200,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start(({ finished }) => {
-      if (finished) {
-        setRenderModal(false);
-        onClose();
-      }
-    });
-  }
 
   useEffect(() => {
     if (tiers.length > 0) {
@@ -137,10 +178,7 @@ export function OrderBottomSheetModal({
 
     const cleanUid = gameUid.trim();
     if (!/^\d{9,10}$/.test(cleanUid)) {
-      Alert.alert(
-        'UID Tidak Valid',
-        'Masukkan 9â€“10 digit angka Genshin Impact UID kamu.'
-      );
+      Alert.alert('UID Tidak Valid', 'Masukkan 9â€“10 digit angka Genshin Impact UID kamu.');
       return;
     }
 
@@ -150,10 +188,7 @@ export function OrderBottomSheetModal({
       const userId = sessionData.session?.user?.id;
 
       if (!userId) {
-        Alert.alert(
-          'Masuk Terlebih Dahulu',
-          'Silakan masuk atau daftar akun di tab Akun sebelum membuat pesanan.'
-        );
+        Alert.alert('Masuk Terlebih Dahulu', 'Silakan masuk atau daftar akun di tab Akun sebelum membuat pesanan.');
         setSubmitting(false);
         return;
       }
@@ -178,55 +213,49 @@ export function OrderBottomSheetModal({
 
       if (error) throw error;
 
-      Alert.alert(
-        'Pesanan Dibuat',
-        `Order ${service.name} untuk UID ${cleanUid} (${gameServer}) berhasil dibuat.`
-      );
+      Alert.alert('Pesanan Dibuat', `Order ${service.name} untuk UID ${cleanUid} (${gameServer}) berhasil dibuat.`);
       setGameUid('');
       setNotes('');
       onOrderSuccess();
-      handleAnimatedClose();
+      dismissWithAnimation();
     } catch (err: any) {
-      Alert.alert(
-        'Gagal Membuat Pesanan',
-        err?.message ?? 'Terjadi kesalahan saat menyimpan pesanan.'
-      );
+      Alert.alert('Gagal Membuat Pesanan', err?.message ?? 'Terjadi kesalahan saat menyimpan pesanan.');
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal
-      visible={renderModal}
-      transparent
-      animationType="none"
-      onRequestClose={handleAnimatedClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.kvWrapper}
-      >
+    <Modal visible={renderModal} transparent animationType="none" onRequestClose={dismissWithAnimation}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kvWrapper}>
         <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleAnimatedClose} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={dismissWithAnimation} />
         </Animated.View>
 
-        <Animated.View style={[styles.sheetContainer, { transform: [{ translateY: sheetAnim }] }]}>
-          <View style={styles.dragHandle} />
-
-          <View style={styles.headerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.eyebrow}>KONFIGURASI PESANAN</Text>
-              <Text style={styles.sheetTitle} numberOfLines={1}>
-                {service.name}
-              </Text>
+        <Animated.View
+          style={[
+            styles.sheetContainer,
+            { paddingBottom: keyboardHeight, transform: [{ translateY: sheetAnim }] },
+          ]}
+        >
+          <View {...panResponder.panHandlers}>
+            <View style={styles.dragHandle} />
+            <View style={styles.headerRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.eyebrow}>GESER KE BAWAH UNTUK MENUTUP</Text>
+                <Text style={styles.sheetTitle} numberOfLines={1}>
+                  {service.name}
+                </Text>
+              </View>
+              <Pressable onPress={dismissWithAnimation} style={styles.closeBtn}>
+                <X size={18} color={COLORS.frostGlow} />
+              </Pressable>
             </View>
-            <Pressable onPress={handleAnimatedClose} style={styles.closeBtn}>
-              <X size={18} color={COLORS.frostGlow} />
-            </Pressable>
           </View>
 
           <ScrollView
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollBody}
           >
@@ -242,10 +271,7 @@ export function OrderBottomSheetModal({
                         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                         setSelectedTierId(tier.id);
                       }}
-                      style={[
-                        styles.tierCard,
-                        isSelected && styles.tierCardSelected,
-                      ]}
+                      style={[styles.tierCard, isSelected && styles.tierCardSelected]}
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={styles.tierName}>{tier.name}</Text>
@@ -256,12 +282,8 @@ export function OrderBottomSheetModal({
                         ) : null}
                       </View>
                       <View style={styles.tierRight}>
-                        <Text style={styles.tierPrice}>
-                          {formatIDR(tier.fixed_price)}
-                        </Text>
-                        {isSelected && (
-                          <Check size={15} color={COLORS.anemoBright} />
-                        )}
+                        <Text style={styles.tierPrice}>{formatIDR(tier.fixed_price)}</Text>
+                        {isSelected && <Check size={15} color={COLORS.anemoBright} />}
                       </View>
                     </Pressable>
                   );
@@ -294,19 +316,9 @@ export function OrderBottomSheetModal({
                         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                         setGameServer(srv);
                       }}
-                      style={[
-                        styles.serverPill,
-                        active && styles.serverPillActive,
-                      ]}
+                      style={[styles.serverPill, active && styles.serverPillActive]}
                     >
-                      <Text
-                        style={[
-                          styles.serverText,
-                          active && styles.serverTextActive,
-                        ]}
-                      >
-                        {srv}
-                      </Text>
+                      <Text style={[styles.serverText, active && styles.serverTextActive]}>{srv}</Text>
                     </Pressable>
                   );
                 })}
@@ -322,6 +334,7 @@ export function OrderBottomSheetModal({
                 placeholderTextColor={COLORS.fogVeil}
                 multiline
                 numberOfLines={3}
+                onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 140)}
                 style={[styles.input, styles.textArea]}
               />
             </View>
@@ -336,9 +349,7 @@ export function OrderBottomSheetModal({
 
           <View style={styles.footerBar}>
             <View>
-              <Text style={styles.totalCaption}>
-                ESTIMASI {formatEstimatedHours(etaHours).toUpperCase()}
-              </Text>
+              <Text style={styles.totalCaption}>ESTIMASI {formatEstimatedHours(etaHours).toUpperCase()}</Text>
               <Text style={styles.totalAmount}>{formatIDR(totalPrice)}</Text>
             </View>
 
@@ -365,12 +376,13 @@ export function OrderBottomSheetModal({
 }
 
 const styles = StyleSheet.create({
-  kvWrapper: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
+  kvWrapper: { flex: 1, justifyContent: 'flex-end' },
   backdrop: {
-    position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: 'rgba(3, 5, 9, 0.85)',
   },
   sheetContainer: {
@@ -383,10 +395,10 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.sm,
   },
   dragHandle: {
-    width: 36,
+    width: 40,
     height: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
     alignSelf: 'center',
     marginBottom: SPACING.md,
   },
@@ -398,18 +410,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderGlass,
   },
-  eyebrow: {
-    color: COLORS.moonMist,
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    letterSpacing: 1.5,
-  },
-  sheetTitle: {
-    color: COLORS.pureWhite,
-    fontFamily: FONTS.displayBold,
-    fontSize: 21,
-    marginTop: 2,
-  },
+  eyebrow: { color: COLORS.moonMist, fontFamily: FONTS.mono, fontSize: 10, letterSpacing: 1.5 },
+  sheetTitle: { color: COLORS.pureWhite, fontFamily: FONTS.displayBold, fontSize: 21, marginTop: 2 },
   closeBtn: {
     width: 34,
     height: 34,
@@ -420,21 +422,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrollBody: {
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-  },
-  section: {
-    marginBottom: SPACING.lg,
-  },
-  sectionLabel: {
-    color: COLORS.moonMist,
-    fontFamily: FONTS.mono,
-    fontSize: 10.5,
-    letterSpacing: 1.3,
-    marginBottom: SPACING.sm,
-  },
+  scrollBody: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.lg, paddingBottom: SPACING.xxl },
+  section: { marginBottom: SPACING.lg },
+  sectionLabel: { color: COLORS.moonMist, fontFamily: FONTS.mono, fontSize: 10.5, letterSpacing: 1.3, marginBottom: SPACING.sm },
   tierCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -447,30 +437,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     gap: SPACING.md,
   },
-  tierCardSelected: {
-    backgroundColor: COLORS.glassActiveTint,
-    borderColor: COLORS.borderActive,
-  },
-  tierName: {
-    color: COLORS.pureWhite,
-    fontFamily: FONTS.bodySemiBold,
-    fontSize: 14,
-  },
-  tierDesc: {
-    color: COLORS.fogVeil,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  tierRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  tierPrice: {
-    color: COLORS.moonMist,
-    fontFamily: FONTS.monoMedium,
-    fontSize: 13,
-  },
+  tierCardSelected: { backgroundColor: COLORS.glassActiveTint, borderColor: COLORS.borderActive },
+  tierName: { color: COLORS.pureWhite, fontFamily: FONTS.bodySemiBold, fontSize: 14 },
+  tierDesc: { color: COLORS.fogVeil, fontFamily: FONTS.body, fontSize: 12, marginTop: 2 },
+  tierRight: { alignItems: 'flex-end', gap: 4 },
+  tierPrice: { color: COLORS.moonMist, fontFamily: FONTS.monoMedium, fontSize: 13 },
   input: {
     backgroundColor: COLORS.glassFill,
     borderWidth: 1,
@@ -482,16 +453,8 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 14,
   },
-  textArea: {
-    fontFamily: FONTS.body,
-    minHeight: 74,
-    textAlignVertical: 'top',
-  },
-  serverRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
+  textArea: { fontFamily: FONTS.body, minHeight: 74, textAlignVertical: 'top' },
+  serverRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   serverPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -500,18 +463,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderGlass,
   },
-  serverPillActive: {
-    backgroundColor: COLORS.glassActiveTint,
-    borderColor: COLORS.borderActive,
-  },
-  serverText: {
-    color: COLORS.fogVeil,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 13,
-  },
-  serverTextActive: {
-    color: COLORS.pureWhite,
-  },
+  serverPillActive: { backgroundColor: COLORS.glassActiveTint, borderColor: COLORS.borderActive },
+  serverText: { color: COLORS.fogVeil, fontFamily: FONTS.bodyMedium, fontSize: 13 },
+  serverTextActive: { color: COLORS.pureWhite },
   guaranteeBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -522,13 +476,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(45, 212, 191, 0.22)',
   },
-  guaranteeText: {
-    flex: 1,
-    color: COLORS.frostGlow,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    lineHeight: 17,
-  },
+  guaranteeText: { flex: 1, color: COLORS.frostGlow, fontFamily: FONTS.body, fontSize: 12, lineHeight: 17 },
   footerBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -539,18 +487,8 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.borderGlass,
     backgroundColor: COLORS.abyssCanvas,
   },
-  totalCaption: {
-    color: COLORS.fogVeil,
-    fontFamily: FONTS.mono,
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  totalAmount: {
-    color: COLORS.pureWhite,
-    fontFamily: FONTS.displayBold,
-    fontSize: 20,
-    marginTop: 2,
-  },
+  totalCaption: { color: COLORS.fogVeil, fontFamily: FONTS.mono, fontSize: 10, letterSpacing: 1 },
+  totalAmount: { color: COLORS.pureWhite, fontFamily: FONTS.displayBold, fontSize: 20, marginTop: 2 },
   ctaButton: {
     backgroundColor: COLORS.anemoBright,
     borderRadius: RADIUS.pill,
@@ -559,9 +497,5 @@ const styles = StyleSheet.create({
     minWidth: 150,
     alignItems: 'center',
   },
-  ctaText: {
-    color: COLORS.abyssInk,
-    fontFamily: FONTS.bodySemiBold,
-    fontSize: 14,
-  },
+  ctaText: { color: COLORS.abyssInk, fontFamily: FONTS.bodySemiBold, fontSize: 14 },
 });

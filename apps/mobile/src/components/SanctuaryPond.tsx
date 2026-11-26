@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import Svg, { Path, Circle, G, Ellipse } from 'react-native-svg';
 import { SAGE, FONTS } from '../theme/sage';
+import { AnimatedCounter, LivePulseDot } from './MotionPrimitives';
 
 interface Props {
   percentage: number;
@@ -14,28 +15,36 @@ interface Props {
 export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, completedCount }: Props) {
   const safePct = Math.max(0, Math.min(100, Math.round(percentage || 0)));
 
-  // Animasi interaktif saat disentuh
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const rippleScale = useRef(new Animated.Value(0.4)).current;
   const rippleOpacity = useRef(new Animated.Value(0)).current;
+  const waterRiseAnim = useRef(new Animated.Value(0)).current;
 
-  // Animasi gelombang air berkelanjutan (60fps native driver)
   const waveFrontAnim = useRef(new Animated.Value(0)).current;
   const waveBackAnim = useRef(new Animated.Value(0)).current;
   const waveTideAnim = useRef(new Animated.Value(0)).current;
   const gaugeWaveAnim = useRef(new Animated.Value(0)).current;
 
-  // Animasi biota kolam (koi independen, tanaman air, gelembung)
   const koiPeachAnim = useRef(new Animated.Value(0)).current;
   const koiJadeAnim = useRef(new Animated.Value(0)).current;
   const seaweedAnim = useRef(new Animated.Value(0)).current;
   const bubbleAnim = useRef(new Animated.Value(0)).current;
 
+  // Animasi permukaan air naik sesuai persentase
+  useEffect(() => {
+    Animated.spring(waterRiseAnim, {
+      toValue: safePct,
+      speed: 10,
+      bounciness: 5,
+      useNativeDriver: true,
+    }).start();
+  }, [safePct, waterRiseAnim]);
+
   useEffect(() => {
     const frontWaveLoop = Animated.loop(
       Animated.timing(waveFrontAnim, {
         toValue: 1,
-        duration: 2400,
+        duration: 2300,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -44,7 +53,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     const backWaveLoop = Animated.loop(
       Animated.timing(waveBackAnim, {
         toValue: 1,
-        duration: 3400,
+        duration: 3300,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -70,7 +79,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     const gaugeWaveLoop = Animated.loop(
       Animated.timing(gaugeWaveAnim, {
         toValue: 1,
-        duration: 2100,
+        duration: 2000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -181,7 +190,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     ]).start();
   }
 
-  // Interpolasi gelombang air seamless (periode 180px & pasang-surut vertikal)
   const frontWaveX = waveFrontAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, -180],
@@ -192,7 +200,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
   });
   const frontTideY = waveTideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [1.5, -1.8],
+    outputRange: [1.6, -1.8],
   });
   const backTideY = waveTideAnim.interpolate({
     inputRange: [0, 1],
@@ -203,14 +211,18 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     outputRange: [0, -112],
   });
 
-  // Gerak masing-masing ikan koi (horizontal + mengayun vertikal)
+  // Translasi vertikal permukaan air dalam lingkaran 112px (0% -> bawah, 100% -> penuh)
+  const gaugeWaterLevelY = waterRiseAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: [98, 2],
+  });
+
   const peachX = koiPeachAnim.interpolate({ inputRange: [0, 1], outputRange: [-11, 13] });
   const peachY = koiPeachAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1.8, -2.6, 1.8] });
 
   const jadeX = koiJadeAnim.interpolate({ inputRange: [0, 1], outputRange: [12, -12] });
   const jadeY = koiJadeAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-2.2, 2.5, -2.2] });
 
-  // Gerak tanaman air & gelembung
   const weedRotate = seaweedAnim.interpolate({ inputRange: [-1, 1], outputRange: ['-5deg', '5deg'] });
   const weedShiftX = seaweedAnim.interpolate({ inputRange: [-1, 1], outputRange: [-2, 2] });
 
@@ -220,47 +232,43 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     outputRange: [0, 0.78, 0.55, 0],
   });
 
-  // Tinggi air pada indikator persentase atas (diameter 112px)
-  const waterFillHeight = Math.max(18, Math.round((safePct / 100) * 112));
-
   return (
     <TouchableOpacity activeOpacity={0.96} onPress={triggerRipple} style={{ width: '100%' }}>
       <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
-        {/* Lingkaran Indikator Persentase Atas dengan Permukaan Air Bergelombang */}
+        {/* Lingkaran Indikator Persentase Atas dengan Air Naik + Gelombang */}
         <View style={styles.gaugeCircle}>
           <Animated.View
             style={[
               styles.gaugeWaveContainer,
               {
-                height: waterFillHeight + 8,
-                transform: [{ translateX: gaugeWaveX }, { translateY: frontTideY }],
+                transform: [{ translateX: gaugeWaveX }, { translateY: gaugeWaterLevelY }],
               },
             ]}
           >
-            <Svg width="224" height={waterFillHeight + 8} viewBox={`0 0 224 ${waterFillHeight + 8}`}>
+            <Svg width="224" height="120" viewBox="0 0 224 120">
               <Path
-                d={`M 0 7 Q 28 0, 56 7 T 112 7 Q 140 0, 168 7 T 224 7 L 224 ${waterFillHeight + 8} L 0 ${waterFillHeight + 8} Z`}
+                d="M 0 7 Q 28 0, 56 7 T 112 7 Q 140 0, 168 7 T 224 7 L 224 120 L 0 120 Z"
                 fill="#A7CEC0"
               />
               <Path
                 d="M 0 7 Q 28 0, 56 7 T 112 7 Q 140 0, 168 7 T 224 7"
                 fill="none"
-                stroke="rgba(255,255,255,0.75)"
+                stroke="rgba(255,255,255,0.78)"
                 strokeWidth="1.6"
               />
             </Svg>
           </Animated.View>
 
-          <Text style={styles.pctText}>{safePct}%</Text>
+          <AnimatedCounter value={safePct} suffix="%" duration={850} style={styles.pctText} />
           <Text style={styles.subText} numberOfLines={1}>
             {subtitle || activeCount + ' Order Aktif'}
           </Text>
         </View>
 
-        {/* Kapsul Status Tengah */}
+        {/* Kapsul Status Tengah dengan Live Pulse Dot */}
         <View style={styles.pillBar}>
           <View style={styles.pillItem}>
-            <View style={[styles.dot, { backgroundColor: SAGE.primary }]} />
+            <LivePulseDot color={SAGE.primary} size={7} active={activeCount > 0} />
             <Text style={styles.pillText}>Sedang Joki: {activeCount}</Text>
           </View>
           <View style={styles.pillItem}>
@@ -273,7 +281,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
 
         {/* Kolam Air Bawah dengan Gelombang 2 Lapis & Biota Aktif */}
         <View style={styles.bottomPond}>
-          {/* Gelombang Belakang (Bergerak ke kanan) */}
           <Animated.View
             style={[
               styles.waveLayer,
@@ -288,7 +295,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
             </Svg>
           </Animated.View>
 
-          {/* Gelombang Depan + Kilau Permukaan Air (Bergerak ke kiri) */}
           <Animated.View
             style={[
               styles.waveLayer,
@@ -309,7 +315,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
             </Svg>
           </Animated.View>
 
-          {/* Riak Sentuhan Interaktif */}
           <Animated.View
             pointerEvents="none"
             style={[
@@ -321,7 +326,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
             ]}
           />
 
-          {/* Tanaman Air Kiri & Kanan yang Melambai */}
           <Animated.View
             style={[
               styles.seaweed,
@@ -367,9 +371,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
             ]}
           />
 
-          {/* Panggung Biota Kolam (Gelembung + 2 Ikan Koi Independen) */}
           <View style={styles.fishStage}>
-            {/* Gelembung Naik */}
             <Animated.View
               style={[
                 StyleSheet.absoluteFill,
@@ -383,7 +385,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
               </Svg>
             </Animated.View>
 
-            {/* Ikan Koi Peach */}
             <Animated.View
               style={[
                 StyleSheet.absoluteFill,
@@ -402,7 +403,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
               </Svg>
             </Animated.View>
 
-            {/* Ikan Koi Sage-Jade */}
             <Animated.View
               style={[
                 StyleSheet.absoluteFill,
@@ -452,9 +452,10 @@ const styles = StyleSheet.create({
   },
   gaugeWaveContainer: {
     position: 'absolute',
-    bottom: -2,
+    top: 0,
     left: 0,
     width: 224,
+    height: 120,
   },
   pctText: { fontFamily: FONTS.displayExtra, fontSize: 27, color: '#172B26', lineHeight: 31 },
   subText: { fontFamily: FONTS.bodyBold, fontSize: 10, color: '#2E4A42', marginTop: 2 },
@@ -463,12 +464,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 7,
+    paddingVertical: 6,
     flexDirection: 'row',
-    gap: 16,
+    gap: 14,
     zIndex: 2,
   },
-  pillItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pillItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   pillText: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.textPrimary },
   bottomPond: {

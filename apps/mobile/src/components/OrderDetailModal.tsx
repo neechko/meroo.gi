@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, ScrollView, TextInput, Image,
   StyleSheet, Share, KeyboardAvoidingView, Platform,
-  Animated, Easing, LayoutAnimation, UIManager,
+  Animated, Easing, LayoutAnimation, UIManager, PanResponder, Keyboard,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, CHECKLIST_PRESETS, formatIDR } from '../theme/sage';
@@ -53,8 +53,8 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   const [messages, setMessages] = useState<any[]>([]);
   const [chatText, setChatText] = useState('');
 
-  // State untuk animasi buka-tutup modal & panel lipat
   const [renderModal, setRenderModal] = useState(visible);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<SectionKey, boolean>>({
     checklist: false,
     vault: false,
@@ -62,6 +62,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     chat: false,
   });
 
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(560)).current;
   const cardAnims = useRef([
@@ -79,14 +80,53 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   const receiptAnim = useRef(new Animated.Value(0)).current;
   const zoomAnim = useRef(new Animated.Value(0)).current;
 
-  // Cache lokal per (orderId:date) + pengunci urutan request agar data tidak pernah berkedip kosong
   const checklistCacheRef = useRef<Record<string, any[]>>({});
   const reqSeqRef = useRef(0);
 
   const isStaff = role === 'worker' || role === 'admin';
   const isOwner = order?.consumer_id === userId;
 
-  // Animasi buka & tutup modal utama
+  // Pantau tinggi keyboard agar konten modal tidak tertutup keyboard
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const detailPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 6 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) {
+          sheetAnim.setValue(gs.dy);
+          backdropAnim.setValue(Math.max(0, 1 - gs.dy / 480));
+        }
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 120 || gs.vy > 0.65) {
+          handleAnimatedClose();
+        } else {
+          Animated.parallel([
+            Animated.spring(sheetAnim, { toValue: 0, speed: 22, bounciness: 6, useNativeDriver: true }),
+            Animated.timing(backdropAnim, { toValue: 1, duration: 160, useNativeDriver: true }),
+          ]).start();
+        }
+      },
+    })
+  ).current;
+
   useEffect(() => {
     if (visible) {
       setRenderModal(true);
@@ -120,6 +160,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
         ),
       ]).start();
     } else if (renderModal) {
+      setKeyboardHeight(0);
       Animated.parallel([
         Animated.timing(backdropAnim, {
           toValue: 0,
@@ -139,7 +180,6 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     }
   }, [visible]);
 
-  // Animasi buka & tutup modal Struk
   useEffect(() => {
     if (showReceiptModal) {
       setReceiptRender(true);
@@ -162,7 +202,6 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     }
   }, [showReceiptModal]);
 
-  // Animasi buka & tutup modal Zoom Gambar
   useEffect(() => {
     if (zoomImage) {
       setActiveZoomUri(zoomImage);
@@ -190,6 +229,8 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   }, [zoomImage]);
 
   function handleAnimatedClose() {
+    Keyboard.dismiss();
+    setKeyboardHeight(0);
     Animated.parallel([
       Animated.timing(backdropAnim, {
         toValue: 0,
@@ -362,6 +403,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
         password: loginPass.trim(),
       });
       setLoginPass('');
+      Keyboard.dismiss();
       showToast('Kredensial terenkripsi AES-256 tersimpan!', 'success');
       loadAll();
     } catch (e: any) {
@@ -384,6 +426,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     try {
       await goApi.submitVerificationCode(order.id, verifCode.trim());
       setVerifCode('');
+      Keyboard.dismiss();
       showToast('Kode verifikasi dikirim ke Worker.', 'success');
       loadAll();
     } catch (e: any) {
@@ -501,6 +544,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
     try {
       await goApi.editProgress(order.id, progId, Number(editPct) || 0, editNote);
       setEditingProgId(null);
+      Keyboard.dismiss();
       showToast('Koreksi progres disimpan', 'success');
       loadAll();
       onRefresh();
@@ -518,6 +562,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
       ...prev,
       { id: 'msg-' + Date.now(), content: text, sender: { full_name: 'Saya' } },
     ]);
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     await supabase.from('messages').insert({
       order_id: order.id,
       sender_id: userId,
@@ -555,17 +600,25 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
       <Animated.View style={[styles.modalBackdrop, { opacity: backdropAnim }]}>
         <Animated.View style={[styles.sheetWrapper, { transform: [{ translateY: sheetAnim }] }]}>
           <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={styles.header}>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={styles.headerTitle} numberOfLines={1}>{order.services?.name || 'Detail Pesanan'}</Text>
-                <Text style={styles.headerSub}>UID {order.game_uid} • {order.game_server} • {order.status.toUpperCase()}</Text>
+            <View {...detailPanResponder.panHandlers} style={styles.headerWrap}>
+              <View style={styles.sheetDragPill} />
+              <View style={styles.header}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.headerTitle} numberOfLines={1}>{order.services?.name || 'Detail Pesanan'}</Text>
+                  <Text style={styles.headerSub}>UID {order.game_uid} â€¢ {order.game_server} â€¢ {order.status.toUpperCase()}</Text>
+                </View>
+                <TouchableOpacity onPress={handleAnimatedClose} style={styles.closeBtn}>
+                  <FontAwesome5 name="times" size={17} color={SAGE.textPrimary} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={handleAnimatedClose} style={styles.closeBtn}>
-                <FontAwesome5 name="times" size={17} color={SAGE.textPrimary} />
-              </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.body}>
+            <ScrollView
+              ref={scrollViewRef}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.body, { paddingBottom: 48 + keyboardHeight }]}
+            >
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.receiptBtn} onPress={handleOpenReceipt}>
                   <FontAwesome5 name="print" size={14} color="#FFF" />
@@ -579,7 +632,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 )}
               </View>
 
-              {/* Panel 1: Kalender & Checklist (Collapsible) */}
+              {/* Panel 1: Kalender & Checklist */}
               <Animated.View style={[styles.card, getCardAnimStyle(0)]}>
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('checklist')}>
                   <View style={styles.cardHead}>
@@ -634,7 +687,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
 
                     <View style={styles.staffBox}>
                       <Text style={styles.subLabel}>Tambah Target / Checklist Harian & Mingguan:</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
+                      <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
                         {CHECKLIST_PRESETS.map((p) => (
                           <TouchableOpacity key={p.task_key} style={styles.presetChip} onPress={() => handleAddPreset(p)}>
                             <FontAwesome5 name="plus" size={10} color={SAGE.primaryDark} />
@@ -667,7 +720,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 )}
               </Animated.View>
 
-              {/* Panel 2: Encrypted Vault (Collapsible) */}
+              {/* Panel 2: Encrypted Vault */}
               <Animated.View style={[styles.card, getCardAnimStyle(1)]}>
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('vault')}>
                   <View style={styles.cardHead}>
@@ -696,7 +749,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                         />
                         <TextInput
                           style={styles.input}
-                          placeholder={vault?.has_password ? '•••••••• (Isi ulang jika ingin ubah)' : 'Password Akun Game'}
+                          placeholder={vault?.has_password ? 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢ (Isi ulang jika ingin ubah)' : 'Password Akun Game'}
                           placeholderTextColor={SAGE.textSecondary}
                           secureTextEntry
                           value={loginPass}
@@ -734,7 +787,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                             <Text style={styles.secretLine}>Password: {vault.password || '(Terkunci / Selesai)'}</Text>
                             <Text style={styles.secretLine}>
                               Status Verifikasi: {vault.verification_status}
-                              {vault.verification_code ? ' → KODE: ' + vault.verification_code : ''}
+                              {vault.verification_code ? ' â†’ KODE: ' + vault.verification_code : ''}
                             </Text>
                             <TouchableOpacity style={styles.secondaryBtn} onPress={handleRequestCode}>
                               <FontAwesome5 name="key" size={13} color={SAGE.primaryDark} />
@@ -750,7 +803,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 )}
               </Animated.View>
 
-              {/* Panel 3: Riwayat Progres + Bukti Screenshot (Collapsible) */}
+              {/* Panel 3: Riwayat Progres */}
               <Animated.View style={[styles.card, getCardAnimStyle(2)]}>
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('progress')}>
                   <View style={styles.cardHead}>
@@ -781,7 +834,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                             <View style={{ gap: 6 }}>
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={styles.progPct}>{p.percentage}% — {p.notes || 'Update progres'}</Text>
+                                  <Text style={styles.progPct}>{p.percentage}% â€” {p.notes || 'Update progres'}</Text>
                                   <Text style={styles.checkMeta}>{new Date(p.created_at).toLocaleString('id-ID')}</Text>
                                 </View>
                                 {isStaff && (
@@ -811,7 +864,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 )}
               </Animated.View>
 
-              {/* Panel 4: Chat Pesanan (Collapsible) */}
+              {/* Panel 4: Chat Pesanan */}
               <Animated.View style={[styles.card, getCardAnimStyle(3)]}>
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('chat')}>
                   <View style={styles.cardHead}>
@@ -838,6 +891,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                         placeholderTextColor={SAGE.textSecondary}
                         value={chatText}
                         onChangeText={setChatText}
+                        onFocus={() => setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 140)}
                       />
                       <TouchableOpacity style={styles.addBtn} onPress={handleSendChat}>
                         <FontAwesome5 name="paper-plane" size={14} color="#FFF" />
@@ -848,7 +902,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               </Animated.View>
             </ScrollView>
 
-            {/* Modal Struk Resmi dengan Spring Scale */}
+            {/* Modal Struk Resmi */}
             <Modal visible={receiptRender} transparent animationType="none" onRequestClose={() => setShowReceiptModal(false)}>
               <Animated.View style={[styles.receiptOverlay, { opacity: receiptAnim }]}>
                 <Animated.View
@@ -873,7 +927,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                   ]}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.receiptBrand}>meroo.gi • Struk Resmi</Text>
+                    <Text style={styles.receiptBrand}>meroo.gi â€¢ Struk Resmi</Text>
                     <TouchableOpacity onPress={() => setShowReceiptModal(false)}>
                       <FontAwesome5 name="times" size={18} color={SAGE.textPrimary} />
                     </TouchableOpacity>
@@ -892,7 +946,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               </Animated.View>
             </Modal>
 
-            {/* Modal Zoom Screenshot Progres dengan Spring Scale */}
+            {/* Modal Zoom Screenshot */}
             <Modal visible={zoomRender} transparent animationType="none" onRequestClose={() => setZoomImage(null)}>
               <Animated.View style={[styles.zoomOverlay, { opacity: zoomAnim }]}>
                 <TouchableOpacity style={styles.zoomTouchArea} activeOpacity={1} onPress={() => setZoomImage(null)}>
@@ -929,9 +983,23 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(20, 38, 33, 0.35)' },
   sheetWrapper: { flex: 1 },
   container: { flex: 1, backgroundColor: SAGE.bgCanvas },
+  headerWrap: {
+    backgroundColor: SAGE.bgHeader,
+    paddingTop: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  sheetDragPill: {
+    width: 42,
+    height: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(26,46,41,0.22)',
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
   header: {
     backgroundColor: SAGE.bgHeader,
-    paddingTop: 22,
+    paddingTop: 8,
     paddingBottom: 16,
     paddingHorizontal: 18,
     flexDirection: 'row',

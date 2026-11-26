@@ -1,7 +1,18 @@
-﻿import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, formatIDR } from '../theme/sage';
+import { SpringTouchable } from '../components/SpringTouchable';
+import {
+  AnimatedCounter,
+  AnimatedProgressBar,
+  LivePulseDot,
+  StaggerItem,
+} from '../components/MotionPrimitives';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface Props {
   orders: any[];
@@ -25,12 +36,17 @@ export function OrdersScreen({ orders, onSelectOrder }: Props) {
     return true;
   });
 
+  function selectFilter(next: 'all' | 'active' | 'completed' | 'cancelled') {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setFilter(next);
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Pesanan Saya ({orders.length})</Text>
         <Text style={styles.sub}>Ketuk pesanan untuk kalender checklist, vault, atau struk</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
           {(
             [
               { key: 'all', label: `Semua (${counts.all})` },
@@ -39,39 +55,51 @@ export function OrdersScreen({ orders, onSelectOrder }: Props) {
               { key: 'cancelled', label: `Batal (${counts.cancelled})` },
             ] as const
           ).map((tab) => (
-            <TouchableOpacity
+            <SpringTouchable
               key={tab.key}
               style={[styles.chip, filter === tab.key && styles.chipActive]}
-              onPress={() => setFilter(tab.key)}
+              onPress={() => selectFilter(tab.key)}
             >
               <Text style={[styles.chipText, filter === tab.key && styles.chipTextActive]}>{tab.label}</Text>
-            </TouchableOpacity>
+            </SpringTouchable>
           ))}
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.list}>
-        {filtered.map((ord) => (
-          <TouchableOpacity key={ord.id} style={styles.card} onPress={() => onSelectOrder(ord)}>
-            <View style={styles.row}>
-              <Text style={styles.name}>{ord.services?.name || 'Layanan Joki'}</Text>
-              <Text style={styles.status}>{ord.status.toUpperCase()}</Text>
-            </View>
-            <Text style={styles.meta}>
-              UID {ord.game_uid} • Server {ord.game_server}
-            </Text>
-            <View style={styles.barBg}>
-              <View style={[styles.barFill, { width: `${Math.min(100, ord.current_percentage || 0)}%` }]} />
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.price}>{formatIDR(ord.total_price)}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.detailLink}>Detail & Struk ({ord.current_percentage}%)</Text>
-                <FontAwesome5 name="chevron-right" size={12} color={SAGE.primaryDark} />
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {filtered.map((ord, idx) => {
+          const isRunning = ord.status === 'paid' || ord.status === 'in_progress';
+          return (
+            <StaggerItem key={ord.id} index={idx}>
+              <SpringTouchable style={styles.card} onPress={() => onSelectOrder(ord)}>
+                <View style={styles.row}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <LivePulseDot color={isRunning ? SAGE.primary : SAGE.accentPeach} size={6} active={isRunning} />
+                    <Text style={styles.name} numberOfLines={1}>{ord.services?.name || 'Layanan Joki'}</Text>
+                  </View>
+                  <Text style={styles.status}>{ord.status.toUpperCase()}</Text>
+                </View>
+                <Text style={styles.meta}>
+                  UID {ord.game_uid} â€¢ Server {ord.game_server}
+                </Text>
+                <AnimatedProgressBar percentage={ord.current_percentage || 0} height={8} />
+                <View style={styles.row}>
+                  <Text style={styles.price}>{formatIDR(ord.total_price)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <AnimatedCounter
+                      value={ord.current_percentage || 0}
+                      prefix="Progres "
+                      suffix="%"
+                      duration={850}
+                      style={styles.detailLink}
+                    />
+                    <FontAwesome5 name="chevron-right" size={12} color={SAGE.primaryDark} />
+                  </View>
+                </View>
+              </SpringTouchable>
+            </StaggerItem>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -86,7 +114,7 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: SAGE.primary },
   chipText: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.textSecondary },
   chipTextActive: { color: '#FFF' },
-  list: { padding: 16, gap: 12, paddingBottom: 112 },
+  list: { padding: 16, gap: 12, paddingBottom: 124 },
   card: {
     backgroundColor: SAGE.surfaceCard,
     borderRadius: 22,
@@ -107,8 +135,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   meta: { fontFamily: FONTS.mono, fontSize: 11, color: SAGE.textSecondary },
-  barBg: { height: 7, backgroundColor: SAGE.surfaceSoft, borderRadius: 6, overflow: 'hidden' },
-  barFill: { height: 7, backgroundColor: SAGE.primary },
   price: { fontFamily: FONTS.displayBold, fontSize: 14, color: SAGE.textPrimary },
   detailLink: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.primaryDark },
 });

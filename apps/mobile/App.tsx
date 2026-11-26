@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView,
+  Animated, Easing, LayoutAnimation, Platform, UIManager, useWindowDimensions, Keyboard, KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -21,6 +22,10 @@ import { AdminScreen } from './src/screens/AdminScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { OrderDetailModal } from './src/components/OrderDetailModal';
 import { SageFeedbackProvider, useSageFeedback } from './src/components/SageFeedback';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -43,6 +48,7 @@ function normalizeRole(raw: any): 'consumer' | 'worker' | 'admin' {
 }
 
 function MainApp() {
+  const { width: screenWidth } = useWindowDimensions();
   const { showToast, showDialog } = useSageFeedback();
   const [session, setSession] = useState<any>(null);
   const [booting, setBooting] = useState(true);
@@ -64,8 +70,81 @@ function MainApp() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
+  // Horizontal Swipe Pager & 1:1 Tab Bar Pill Sync
+  const pagerRef = useRef<any>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const studioSlideX = useRef(new Animated.Value(0)).current;
+  const studioOpacity = useRef(new Animated.Value(1)).current;
+  const tabBarHideAnim = useRef(new Animated.Value(0)).current;
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const s1 = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      Animated.timing(tabBarHideAnim, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+    const s2 = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      Animated.spring(tabBarHideAnim, {
+        toValue: 0,
+        speed: 22,
+        bounciness: 5,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => {
+      s1.remove();
+      s2.remove();
+    };
+  }, [tabBarHideAnim]);
+
   const oauthLockRef = useRef(false);
   const lastSyncedUserRef = useRef<string | null>(null);
+
+  const isStaff = role === 'worker' || role === 'admin';
+  const navItems: { key: TabKey; label: string; iconName: string }[] = [
+    { key: 'home', label: 'Beranda', iconName: 'home' },
+    { key: 'catalog', label: 'Katalog', iconName: 'compass' },
+    { key: 'orders', label: 'Pesanan', iconName: 'clipboard-list' },
+    ...(isStaff ? [{ key: 'studio' as TabKey, label: role === 'admin' ? 'Studio' : 'Worker', iconName: 'sliders-h' }] : []),
+    { key: 'profile', label: 'Akun', iconName: 'user' },
+  ];
+
+  function goToTab(nextTab: TabKey) {
+    const idx = navItems.findIndex((item) => item.key === nextTab);
+    if (idx < 0) return;
+    setActiveTab(nextTab);
+    pagerRef.current?.scrollTo({ x: idx * screenWidth, animated: true });
+  }
+
+  function switchStudioMode(nextMode: 'worker' | 'admin') {
+    if (nextMode === studioMode) return;
+    const direction = nextMode === 'worker' ? 1 : -1;
+    studioSlideX.setValue(direction * 34);
+    studioOpacity.setValue(0.25);
+
+    Animated.parallel([
+      Animated.spring(studioSlideX, {
+        toValue: 0,
+        speed: 24,
+        bounciness: 5,
+        useNativeDriver: true,
+      }),
+      Animated.timing(studioOpacity, {
+        toValue: 1,
+        duration: 210,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    setStudioMode(nextMode);
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -113,7 +192,6 @@ function MainApp() {
     const uid = forcedUserId || session?.user?.id;
     if (!uid) return;
 
-    // Jalankan seluruh query inti secara PARALEL agar instan (< 1 detik)
     const [profRes, srvRes, catRes, ordRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
       supabase.from('services').select('*').eq('is_active', true).order('created_at', { ascending: false }),
@@ -135,7 +213,6 @@ function MainApp() {
     setCategories(catRes.data || []);
     setOrders(ordRes.data || []);
 
-    // Sinkronisasi tambahan dari Go API di latar belakang (non-blocking)
     goApi
       .getMe()
       .then((me) => {
@@ -188,6 +265,7 @@ function MainApp() {
           message: 'Akun dibuat. Silakan masuk menggunakan Email atau Username kamu.',
           type: 'success',
         });
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setAuthMode('login');
         setIdentifier(cleanUsername);
       }
@@ -231,7 +309,7 @@ function MainApp() {
           });
           if (sessErr) throw sessErr;
         } else {
-          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth → URL Configuration.`);
+          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth â†’ URL Configuration.`);
         }
       } else {
         showToast('Login Google dibatalkan.', 'info');
@@ -258,7 +336,7 @@ function MainApp() {
 
   if (!session?.user) {
     return (
-      <ScrollView contentContainerStyle={styles.loginWrap}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginWrap}>
         <StatusBar style="dark" />
         <View style={styles.loginCard}>
           <Text style={styles.brand}>meroo.gi</Text>
@@ -267,13 +345,19 @@ function MainApp() {
           <View style={styles.authSwitch}>
             <TouchableOpacity
               style={[styles.authTab, authMode === 'login' && styles.authTabActive]}
-              onPress={() => setAuthMode('login')}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setAuthMode('login');
+              }}
             >
               <Text style={[styles.authTabText, authMode === 'login' && styles.authTabTextActive]}>Masuk</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.authTab, authMode === 'register' && styles.authTabActive]}
-              onPress={() => setAuthMode('register')}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setAuthMode('register');
+              }}
             >
               <Text style={[styles.authTabText, authMode === 'register' && styles.authTabTextActive]}>Daftar Akun</Text>
             </TouchableOpacity>
@@ -354,11 +438,10 @@ function MainApp() {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </ScrollView></KeyboardAvoidingView>
     );
   }
 
-  const isStaff = role === 'worker' || role === 'admin';
   const myOrders =
     role === 'admin'
       ? orders
@@ -366,86 +449,167 @@ function MainApp() {
   const workerOrders =
     role === 'admin' ? orders : orders.filter((o) => o.worker_id === session.user.id);
 
-  const navItems: { key: TabKey; label: string; iconName: string }[] = [
-    { key: 'home', label: 'Beranda', iconName: 'home' },
-    { key: 'catalog', label: 'Katalog', iconName: 'compass' },
-    { key: 'orders', label: 'Pesanan', iconName: 'clipboard-list' },
-    ...(isStaff ? [{ key: 'studio' as TabKey, label: role === 'admin' ? 'Studio' : 'Worker', iconName: 'sliders-h' }] : []),
-    { key: 'profile', label: 'Akun', iconName: 'user' },
-  ];
+  // Hitung lebar tiap tab dan posisi kapsul hijau 1:1 mengikuti scrollX jari
+  const tabBarOuterWidth = Math.max(0, screenWidth - 32);
+  const singlePillWidth = Math.max(0, tabBarOuterWidth - 12) / navItems.length;
+  const pillTranslateX = scrollX.interpolate({
+    inputRange: navItems.map((_, idx) => idx * screenWidth),
+    outputRange: navItems.map((_, idx) => idx * singlePillWidth),
+    extrapolate: 'clamp',
+  });
 
   return (
     <View style={{ flex: 1, backgroundColor: SAGE.bgCanvas }}>
       <StatusBar style="dark" />
 
-      {activeTab === 'home' && (
-        <HomeScreen
-          profile={profile}
-          role={role}
-          orders={myOrders}
-          onRefresh={() => syncWorkspace()}
-          onSelectOrder={setSelectedOrder}
-          onGoCatalog={() => setActiveTab('catalog')}
-          onGoProfile={() => setActiveTab('profile')}
-        />
-      )}
-      {activeTab === 'catalog' && (
-        <CatalogScreen userId={session.user.id} services={services} categories={categories} onOrderCreated={() => syncWorkspace()} />
-      )}
-      {activeTab === 'orders' && <OrdersScreen orders={myOrders} onSelectOrder={setSelectedOrder} />}
-      {activeTab === 'studio' && isStaff && (
-        <View style={{ flex: 1 }}>
-          {role === 'admin' && (
-            <View style={styles.modeSwitcher}>
-              <TouchableOpacity
-                style={[styles.modePill, studioMode === 'admin' && styles.modePillActive]}
-                onPress={() => setStudioMode('admin')}
-              >
-                <Text style={[styles.modeText, studioMode === 'admin' && styles.modeTextActive]}>Admin & Keuangan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modePill, studioMode === 'worker' && styles.modePillActive]}
-                onPress={() => setStudioMode('worker')}
-              >
-                <Text style={[styles.modeText, studioMode === 'worker' && styles.modeTextActive]}>Worker Workspace</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {studioMode === 'admin' && role === 'admin' ? (
-            <AdminScreen allOrders={orders} services={services} onRefresh={() => syncWorkspace()} onSelectOrder={setSelectedOrder} />
-          ) : (
-            <WorkerScreen userId={session.user.id} assignedOrders={workerOrders} onSelectOrder={setSelectedOrder} onRefresh={() => syncWorkspace()} onOptimisticOrderUpdate={(oid, patch) => setOrders((prev) => prev.map((o) => (o.id === oid ? { ...o, ...patch } : o)))} />
-          )}
-        </View>
-      )}
-      {activeTab === 'profile' && (
-        <ProfileScreen
-          profile={profile}
-          role={role}
-          onGoWorker={() => {
-            setStudioMode('worker');
-            setActiveTab('studio');
-          }}
-          onGoAdmin={() => { setStudioMode('admin'); setActiveTab('studio'); }}
-          onProfileUpdated={(patch) => setProfile((prev: any) => ({ ...(prev || {}), ...patch }))}
-        />
-      )}
+      {/* Swipeable Horizontal Pager: Geser jari ke kiri/kanan untuk pindah halaman */}
+      <Animated.ScrollView
+        ref={pagerRef}
+        horizontal
+        pagingEnabled
+        nestedScrollEnabled
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: true }
+        )}
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / Math.max(1, screenWidth));
+          const next = navItems[idx]?.key;
+          if (next && next !== activeTab) {
+            setActiveTab(next);
+          }
+        }}
+        style={{ flex: 1 }}
+      >
+        {navItems.map((item) => (
+          <View key={item.key} style={{ width: screenWidth, flex: 1 }}>
+            {item.key === 'home' && (
+              <HomeScreen
+                profile={profile}
+                role={role}
+                orders={myOrders}
+                onRefresh={() => syncWorkspace()}
+                onSelectOrder={setSelectedOrder}
+                onGoCatalog={() => goToTab('catalog')}
+                onGoProfile={() => goToTab('profile')}
+              />
+            )}
+            {item.key === 'catalog' && (
+              <CatalogScreen
+                userId={session.user.id}
+                services={services}
+                categories={categories}
+                onOrderCreated={() => syncWorkspace()}
+              />
+            )}
+            {item.key === 'orders' && (
+              <OrdersScreen orders={myOrders} onSelectOrder={setSelectedOrder} />
+            )}
+            {item.key === 'studio' && isStaff && (
+              <View style={{ flex: 1 }}>
+                {role === 'admin' && (
+                  <View style={styles.modeSwitcher}>
+                    <TouchableOpacity
+                      style={[styles.modePill, studioMode === 'admin' && styles.modePillActive]}
+                      onPress={() => switchStudioMode('admin')}
+                    >
+                      <Text style={[styles.modeText, studioMode === 'admin' && styles.modeTextActive]}>Admin & Keuangan</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modePill, studioMode === 'worker' && styles.modePillActive]}
+                      onPress={() => switchStudioMode('worker')}
+                    >
+                      <Text style={[styles.modeText, studioMode === 'worker' && styles.modeTextActive]}>Worker Workspace</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <Animated.View
+                  style={{
+                    flex: 1,
+                    opacity: studioOpacity,
+                    transform: [{ translateX: studioSlideX }],
+                  }}
+                >
+                  {studioMode === 'admin' && role === 'admin' ? (
+                    <AdminScreen
+                      allOrders={orders}
+                      services={services}
+                      onRefresh={() => syncWorkspace()}
+                      onSelectOrder={setSelectedOrder}
+                    />
+                  ) : (
+                    <WorkerScreen
+                      userId={session.user.id}
+                      assignedOrders={workerOrders}
+                      onSelectOrder={setSelectedOrder}
+                      onRefresh={() => syncWorkspace()}
+                      onOptimisticOrderUpdate={(oid, patch) =>
+                        setOrders((prev) => prev.map((o) => (o.id === oid ? { ...o, ...patch } : o)))
+                      }
+                    />
+                  )}
+                </Animated.View>
+              </View>
+            )}
+            {item.key === 'profile' && (
+              <ProfileScreen
+                profile={profile}
+                role={role}
+                onGoWorker={() => {
+                  setStudioMode('worker');
+                  goToTab('studio');
+                }}
+                onGoAdmin={() => {
+                  setStudioMode('admin');
+                  goToTab('studio');
+                }}
+                onProfileUpdated={(patch) => setProfile((prev: any) => ({ ...(prev || {}), ...patch }))}
+              />
+            )}
+          </View>
+        ))}
+      </Animated.ScrollView>
 
-      <View style={styles.tabBar}>
-        {navItems.map(({ key, label, iconName }) => {
+      {/* Bottom Tab Bar dengan Kapsul Hijau Meluncur 1:1 Mengikuti Geseran Jari */}
+      <Animated.View pointerEvents={keyboardVisible ? 'none' : 'auto'} style={[styles.tabBar, { opacity: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ translateY: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 110] }) }] }]}>
+        {singlePillWidth > 0 && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.activeTabPill,
+              {
+                width: singlePillWidth,
+                transform: [{ translateX: pillTranslateX }],
+              },
+            ]}
+          />
+        )}
+
+        {navItems.map(({ key, label, iconName }, idx) => {
           const active = activeTab === key;
+          const iconScale = scrollX.interpolate({
+            inputRange: [(idx - 1) * screenWidth, idx * screenWidth, (idx + 1) * screenWidth],
+            outputRange: [0.92, 1.14, 0.92],
+            extrapolate: 'clamp',
+          });
           return (
             <TouchableOpacity
               key={key}
-              style={[styles.tabItem, active && styles.tabItemActive]}
-              onPress={() => setActiveTab(key)}
+              activeOpacity={0.8}
+              style={styles.tabItem}
+              onPress={() => goToTab(key)}
             >
-              <FontAwesome5 name={iconName} size={15} color={active ? '#FFF' : SAGE.textSecondary} />
+              <Animated.View style={{ transform: [{ scale: iconScale }] }}>
+                <FontAwesome5 name={iconName} size={15} color={active ? '#FFF' : SAGE.textSecondary} />
+              </Animated.View>
               <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
             </TouchableOpacity>
           );
         })}
-      </View>
+      </Animated.View>
 
       <OrderDetailModal
         visible={!!selectedOrder}
@@ -553,9 +717,15 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 6,
   },
+  activeTabPill: {
+    position: 'absolute',
+    top: 6,
+    bottom: 6,
+    left: 6,
+    borderRadius: 20,
+    backgroundColor: SAGE.primary,
+  },
   tabItem: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 20, gap: 3 },
-  tabItemActive: { backgroundColor: SAGE.primary },
   tabLabel: { fontFamily: FONTS.bodyBold, fontSize: 10, color: SAGE.textSecondary },
   tabLabelActive: { color: '#FFF' },
 });
-

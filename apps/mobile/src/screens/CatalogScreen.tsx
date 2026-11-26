@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, formatIDR } from '../theme/sage';
@@ -111,7 +111,7 @@ export function CatalogScreen({ userId, services, categories, onOrderCreated }: 
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}>
         {filtered.map((srv) => (
           <View key={srv.id} style={styles.card}>
             <View style={styles.cardTop}>

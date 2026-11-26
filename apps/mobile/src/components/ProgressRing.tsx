@@ -1,5 +1,5 @@
-﻿import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { SAGE } from '../theme/sage';
 
@@ -11,10 +11,26 @@ interface Props {
 
 export function ProgressRing({ percentage, label = 'Progres Aktif', size = 164 }: Props) {
   const clamped = Math.max(0, Math.min(100, Math.round(percentage || 0)));
+  const [animPct, setAnimPct] = useState(0);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const id = anim.addListener(({ value }) => {
+      setAnimPct(value);
+    });
+    Animated.timing(anim, {
+      toValue: clamped,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    return () => anim.removeListener(id);
+  }, [clamped, anim]);
+
   const strokeWidth = 12;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (clamped / 100) * circumference;
+  const strokeDashoffset = circumference - (animPct / 100) * circumference;
 
   return (
     <View style={[styles.wrap, { width: size, height: size }]}>
@@ -41,7 +57,7 @@ export function ProgressRing({ percentage, label = 'Progres Aktif', size = 164 }
         />
       </Svg>
       <View style={styles.center}>
-        <Text style={styles.pct}>{clamped}%</Text>
+        <Text style={styles.pct}>{Math.round(animPct)}%</Text>
         <Text style={styles.lbl}>{label}</Text>
       </View>
     </View>

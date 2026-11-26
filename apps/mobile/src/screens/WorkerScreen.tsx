@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Image, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, formatIDR } from '../theme/sage';
@@ -99,7 +99,7 @@ export function WorkerScreen({ assignedOrders, onSelectOrder, onRefresh, onOptim
         <Text style={styles.title}>Worker Workspace ({assignedOrders.length})</Text>
         <Text style={styles.sub}>Update progres + bukti SS terkompresi, checklist & vault</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}>
         {assignedOrders.map((ord) => {
           const attached = ssMap[ord.id];
           return (

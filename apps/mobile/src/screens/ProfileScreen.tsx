@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, Image, ScrollView, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, roleLabel } from '../theme/sage';
@@ -99,7 +99,7 @@ export function ProfileScreen({ profile, role, onGoWorker, onGoAdmin, onProfileU
         <Text style={styles.sub}>Kelola foto profil, username login, & kontak</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
         <View style={styles.card}>
           {/* Avatar + Tombol Upload Kompresi */}
           <View style={styles.avatarSection}>

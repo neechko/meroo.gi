@@ -1,9 +1,16 @@
-﻿import React from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView, Image, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, formatIDR, roleLabel } from '../theme/sage';
 import { SanctuaryPond } from '../components/SanctuaryPond';
 import { SpringTouchable } from '../components/SpringTouchable';
+import {
+  AnimatedCounter,
+  AnimatedProgressBar,
+  LivePulseDot,
+  SpinTouchable,
+  StaggerItem,
+} from '../components/MotionPrimitives';
 
 interface Props {
   profile: any;
@@ -38,9 +45,9 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
   const initials = (profile?.full_name || 'M').slice(0, 1).toUpperCase();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.userLeft} onPress={onGoProfile} activeOpacity={0.85}>
+        <SpringTouchable style={styles.userLeft} onPress={onGoProfile}>
           {profile?.avatar_url ? (
             <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
           ) : (
@@ -57,54 +64,71 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
             </View>
             <Text style={styles.subBrand}>Halo, {profile?.full_name || 'Traveler'}</Text>
           </View>
-        </TouchableOpacity>
-
-        <SpringTouchable style={styles.refreshBtn} onPress={onRefresh}>
-          <FontAwesome5 name="sync-alt" size={15} color={SAGE.primaryDark} />
         </SpringTouchable>
+
+        <SpinTouchable style={styles.refreshBtn} onPress={onRefresh}>
+          <FontAwesome5 name="sync-alt" size={15} color={SAGE.primaryDark} />
+        </SpinTouchable>
       </View>
 
-      <SanctuaryPond
-        percentage={displayPct}
-        subtitle={pondSubtitle}
-        activeCount={activeOrders.length}
-        totalCount={orders.length}
-        completedCount={completedCount}
-      />
+      <StaggerItem index={0}>
+        <SanctuaryPond
+          percentage={displayPct}
+          subtitle={pondSubtitle}
+          activeCount={activeOrders.length}
+          totalCount={orders.length}
+          completedCount={completedCount}
+        />
+      </StaggerItem>
 
-      {featured ? (
-        <SpringTouchable style={styles.activeCard} onPress={() => onSelectOrder(featured)}>
-          <View style={styles.activeBadge}>
-            <FontAwesome5 name="leaf" size={15} color={SAGE.primaryDark} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.activeTitle}>{featured.services?.name || 'Pesanan Aktif'}</Text>
-            <Text style={styles.activeSub} numberOfLines={1}>
-              UID {featured.game_uid} • {featured.status.toUpperCase()} • {formatIDR(featured.total_price)}
-            </Text>
-          </View>
-          <FontAwesome5 name="arrow-right" size={15} color={SAGE.primaryDark} />
-        </SpringTouchable>
-      ) : (
-        <SpringTouchable style={styles.ctaBtn} onPress={onGoCatalog}>
-          <Text style={styles.ctaText}>Pilih Layanan di Katalog</Text>
-        </SpringTouchable>
-      )}
+      <StaggerItem index={1}>
+        {featured ? (
+          <SpringTouchable style={styles.activeCard} onPress={() => onSelectOrder(featured)}>
+            <View style={styles.activeBadge}>
+              <FontAwesome5 name="leaf" size={15} color={SAGE.primaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <LivePulseDot
+                  color={featured.status === 'in_progress' || featured.status === 'paid' ? SAGE.primary : SAGE.accentPeach}
+                  size={6}
+                  active={featured.status === 'in_progress' || featured.status === 'paid'}
+                />
+                <Text style={styles.activeTitle} numberOfLines={1}>{featured.services?.name || 'Pesanan Aktif'}</Text>
+              </View>
+              <Text style={styles.activeSub} numberOfLines={1}>
+                UID {featured.game_uid} â€¢ {featured.status.toUpperCase()} â€¢ {formatIDR(featured.total_price)}
+              </Text>
+            </View>
+            <FontAwesome5 name="arrow-right" size={15} color={SAGE.primaryDark} />
+          </SpringTouchable>
+        ) : (
+          <SpringTouchable style={styles.ctaBtn} onPress={onGoCatalog}>
+            <Text style={styles.ctaText}>Pilih Layanan di Katalog</Text>
+          </SpringTouchable>
+        )}
+      </StaggerItem>
 
-      <Text style={styles.sectionTitle}>Pantauan Pesanan Terbaru</Text>
-      {orders.slice(0, 4).map((ord) => (
-        <SpringTouchable key={ord.id} style={styles.orderRow} onPress={() => onSelectOrder(ord)}>
-          <View style={styles.pctBadge}>
-            <Text style={styles.pctBadgeText}>{ord.current_percentage || 0}%</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.orderName}>{ord.services?.name || 'Layanan'}</Text>
-            <Text style={styles.orderMeta}>
-              UID {ord.game_uid} • {ord.game_server}
-            </Text>
-          </View>
-          <Text style={styles.orderPrice}>{formatIDR(ord.total_price)}</Text>
-        </SpringTouchable>
+      <StaggerItem index={2}>
+        <Text style={styles.sectionTitle}>Pantauan Pesanan Terbaru</Text>
+      </StaggerItem>
+
+      {orders.slice(0, 4).map((ord, idx) => (
+        <StaggerItem key={ord.id} index={idx + 3}>
+          <SpringTouchable style={styles.orderRow} onPress={() => onSelectOrder(ord)}>
+            <View style={styles.pctBadge}>
+              <AnimatedCounter value={ord.current_percentage || 0} suffix="%" duration={800} style={styles.pctBadgeText} />
+            </View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.orderName}>{ord.services?.name || 'Layanan'}</Text>
+              <Text style={styles.orderMeta}>
+                UID {ord.game_uid} â€¢ {ord.game_server}
+              </Text>
+              <AnimatedProgressBar percentage={ord.current_percentage || 0} height={5} />
+            </View>
+            <Text style={styles.orderPrice}>{formatIDR(ord.total_price)}</Text>
+          </SpringTouchable>
+        </StaggerItem>
       ))}
     </ScrollView>
   );
@@ -182,6 +206,6 @@ const styles = StyleSheet.create({
   },
   pctBadgeText: { fontFamily: FONTS.mono, fontSize: 12, color: SAGE.primaryDark },
   orderName: { fontFamily: FONTS.bodyBold, fontSize: 14, color: SAGE.textPrimary },
-  orderMeta: { fontFamily: FONTS.mono, fontSize: 11, color: SAGE.textSecondary, marginTop: 2 },
+  orderMeta: { fontFamily: FONTS.mono, fontSize: 11, color: SAGE.textSecondary },
   orderPrice: { fontFamily: FONTS.displayBold, fontSize: 14, color: SAGE.primaryDark },
 });
