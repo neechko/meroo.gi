@@ -3,6 +3,7 @@
 import (
     "encoding/json"
     "net/http"
+    "net/url"
     "strings"
 )
 
@@ -31,7 +32,7 @@ func (a *API) ResolveIdentifier(w http.ResponseWriter, r *http.Request) {
     var rows []struct {
         Email string `json:"email"`
     }
-    query := "profiles?username=ilike." + cleanUser + "&select=email&limit=1"
+    query := "profiles?username=ilike." + url.QueryEscape(cleanUser) + "&select=email&limit=1"
     if err := a.DB.Request(r.Context(), http.MethodGet, query, nil, "", &rows); err != nil {
         writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "gagal mencari akun"})
         return

@@ -51,7 +51,29 @@ func (a *API) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) CreateOrderProgress(w http.ResponseWriter, r *http.Request) {
+    uid, _ := r.Context().Value(middleware.UserIDKey).(string)
+    role, _ := r.Context().Value(middleware.UserRoleKey).(string)
     orderID := chi.URLParam(r, "id")
+
+    var orders []struct {
+        ID       string  `json:"id"`
+        WorkerID *string `json:"worker_id"`
+        Status   string  `json:"status"`
+    }
+    if err := a.DB.Request(r.Context(), http.MethodGet, "orders?id=eq."+orderID+"&select=id,worker_id,status", nil, "", &orders); err != nil || len(orders) == 0 {
+        writeJSON(w, http.StatusNotFound, map[string]string{"error": "order tidak ditemukan"})
+        return
+    }
+    ord := orders[0]
+    if role != "admin" && (ord.WorkerID == nil || *ord.WorkerID != uid) {
+        writeJSON(w, http.StatusForbidden, map[string]string{"error": "hanya worker yang ditugaskan atau admin yang dapat mengupdate progres"})
+        return
+    }
+    if ord.Status == "cancelled" {
+        writeJSON(w, http.StatusBadRequest, map[string]string{"error": "order yang dibatalkan tidak dapat diperbarui"})
+        return
+    }
+
     var req struct {
         Percentage    int    `json:"percentage"`
         Notes         string `json:"notes"`

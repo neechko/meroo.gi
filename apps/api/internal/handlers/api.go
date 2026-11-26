@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "math"
     "net/http"
+    "net/url"
     "time"
 
     "github.com/go-chi/chi/v5"
@@ -100,6 +101,14 @@ func (a *API) CancelOrder(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
+
+    // Defense-in-depth: bersihkan kredensial vault segera setelah order dibatalkan
+    _ = a.DB.Request(r.Context(), http.MethodPatch, "order_credentials?order_id=eq."+orderID, map[string]any{
+        "encrypted_password":  nil,
+        "verification_code":   nil,
+        "verification_status": "idle",
+        "updated_at":          now,
+    }, "return=minimal", nil)
 
     writeJSON(w, http.StatusOK, map[string]any{"status": "cancelled", "order_id": orderID})
 }
@@ -295,6 +304,7 @@ func (a *API) GetOrderCredentials(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) HandleVerificationCode(w http.ResponseWriter, r *http.Request) {
+    uid := r.Context().Value(middleware.UserIDKey).(string)
     role := r.Context().Value(middleware.UserRoleKey).(string)
     orderID := chi.URLParam(r, "id")
 
@@ -307,15 +317,35 @@ func (a *API) HandleVerificationCode(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    var orders []struct {
+        ConsumerID string  `json:"consumer_id"`
+        WorkerID   *string `json:"worker_id"`
+        Status     string  `json:"status"`
+    }
+    if err := a.DB.Request(r.Context(), http.MethodGet, "orders?id=eq."+orderID+"&select=consumer_id,worker_id,status", nil, "", &orders); err != nil || len(orders) == 0 {
+        writeJSON(w, http.StatusNotFound, map[string]string{"error": "order tidak ditemukan"})
+        return
+    }
+    ord := orders[0]
+    if ord.Status == "completed" || ord.Status == "cancelled" {
+        writeJSON(w, http.StatusBadRequest, map[string]string{"error": "order sudah selesai atau dibatalkan"})
+        return
+    }
+
     update := map[string]any{"updated_at": time.Now().UTC().Format(time.RFC3339)}
-    if req.Action == "request" {
-        if role != "worker" && role != "admin" {
-            writeJSON(w, http.StatusForbidden, map[string]string{"error": "hanya worker/admin yang dapat meminta kode verifikasi"})
+    if req.Action == "request" || req.Action == "request_code" {
+        isAssignedWorker := ord.WorkerID != nil && *ord.WorkerID == uid
+        if role != "admin" && !(role == "worker" && isAssignedWorker) {
+            writeJSON(w, http.StatusForbidden, map[string]string{"error": "hanya worker yang ditugaskan atau admin yang dapat meminta kode verifikasi"})
             return
         }
         update["verification_status"] = "waiting_code"
         update["verification_code"] = nil
-    } else if req.Action == "submit" {
+    } else if req.Action == "submit" || req.Action == "submit_code" {
+        if role != "admin" && ord.ConsumerID != uid {
+            writeJSON(w, http.StatusForbidden, map[string]string{"error": "hanya pemilik order yang dapat mengirim kode verifikasi"})
+            return
+        }
         if req.Code == "" {
             writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kode verifikasi wajib diisi"})
             return
@@ -335,8 +365,28 @@ func (a *API) HandleVerificationCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) EditOrderProgress(w http.ResponseWriter, r *http.Request) {
+    uid := r.Context().Value(middleware.UserIDKey).(string)
+    role := r.Context().Value(middleware.UserRoleKey).(string)
     orderID := chi.URLParam(r, "id")
     progressID := chi.URLParam(r, "progressId")
+
+    var orders []struct {
+        WorkerID *string `json:"worker_id"`
+        Status   string  `json:"status"`
+    }
+    if err := a.DB.Request(r.Context(), http.MethodGet, "orders?id=eq."+orderID+"&select=worker_id,status", nil, "", &orders); err != nil || len(orders) == 0 {
+        writeJSON(w, http.StatusNotFound, map[string]string{"error": "order tidak ditemukan"})
+        return
+    }
+    ord := orders[0]
+    if role != "admin" && (ord.WorkerID == nil || *ord.WorkerID != uid) {
+        writeJSON(w, http.StatusForbidden, map[string]string{"error": "hanya worker yang ditugaskan atau admin yang dapat mengoreksi progres"})
+        return
+    }
+    if ord.Status == "cancelled" {
+        writeJSON(w, http.StatusBadRequest, map[string]string{"error": "order yang dibatalkan tidak dapat diubah"})
+        return
+    }
 
     var req struct {
         Percentage int    `json:"percentage"`
@@ -361,9 +411,21 @@ func (a *API) EditOrderProgress(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    _ = a.DB.Request(r.Context(), http.MethodPatch, "orders?id=eq."+orderID, map[string]any{
+    orderPatch := map[string]any{
         "current_percentage": req.Percentage,
-    }, "return=minimal", nil)
+    }
+    if req.Percentage >= 100 {
+        orderPatch["status"] = "completed"
+        orderPatch["completed_at"] = time.Now().UTC().Format(time.RFC3339)
+    } else if ord.Status == "completed" {
+        orderPatch["status"] = "in_progress"
+        orderPatch["completed_at"] = nil
+    }
+
+    if err := a.DB.Request(r.Context(), http.MethodPatch, "orders?id=eq."+orderID, orderPatch, "return=minimal", nil); err != nil {
+        writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
 
     writeJSON(w, http.StatusOK, map[string]any{"status": "progress_updated", "percentage": req.Percentage})
 }
@@ -374,7 +436,7 @@ func (a *API) ListChecklists(w http.ResponseWriter, r *http.Request) {
 
     query := "order_checklists?order_id=eq." + orderID + "&order=task_date.desc,created_at.asc"
     if dateFilter != "" {
-        query += "&task_date=eq." + dateFilter
+        query += "&task_date=eq." + url.QueryEscape(dateFilter)
     }
 
     var items []map[string]any
@@ -520,6 +582,10 @@ func (a *API) AssignWorkerToOrder(w http.ResponseWriter, r *http.Request) {
         return
     }
     ord := orders[0]
+    if ord.Status == "completed" || ord.Status == "cancelled" {
+        writeJSON(w, http.StatusBadRequest, map[string]string{"error": "order yang sudah selesai atau dibatalkan tidak dapat ditugaskan ulang"})
+        return
+    }
 
     chosenWorkerID := req.WorkerID
     if chosenWorkerID == "" {
@@ -616,8 +682,15 @@ func (a *API) GetFinanceSummary(w http.ResponseWriter, r *http.Request) {
     }
 
     grossTotal := 0
+    escrowTotal := 0
+    completedCount := 0
     for _, o := range orders {
-        grossTotal += o.TotalPrice
+        if o.Status == "completed" {
+            grossTotal += o.TotalPrice
+            completedCount++
+        } else {
+            escrowTotal += o.TotalPrice
+        }
     }
 
     workerTotal := int(math.Round(float64(grossTotal) * (wPct / 100.0)))
@@ -628,11 +701,13 @@ func (a *API) GetFinanceSummary(w http.ResponseWriter, r *http.Request) {
     _ = a.DB.Request(r.Context(), http.MethodGet, "financial_allocations?order=created_at.desc&select=*", nil, "", &allocations)
 
     writeJSON(w, http.StatusOK, map[string]any{
-        "valid_orders_count": len(orders),
-        "gross_revenue":      grossTotal,
-        "worker_share_total": workerTotal,
-        "admin_share_total":  adminTotal,
-        "treasury_total":     treasuryTotal,
+        "valid_orders_count":     len(orders),
+        "completed_orders_count": completedCount,
+        "gross_revenue":          grossTotal,
+        "escrow_revenue":         escrowTotal,
+        "worker_share_total":     workerTotal,
+        "admin_share_total":      adminTotal,
+        "treasury_total":         treasuryTotal,
         "split_ratios": map[string]float64{
             "worker_share_pct":    wPct,
             "admin_share_pct":     aPct,
@@ -688,11 +763,63 @@ func (a *API) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) DeleteService(w http.ResponseWriter, r *http.Request) {
     serviceID := chi.URLParam(r, "id")
+
+    // Jika layanan sudah memiliki order historis, lakukan soft-delete agar tidak menghapus riwayat transaksi
+    var linkedOrders []struct {
+        ID string `json:"id"`
+    }
+    _ = a.DB.Request(r.Context(), http.MethodGet, "orders?service_id=eq."+serviceID+"&select=id&limit=1", nil, "", &linkedOrders)
+
+    if len(linkedOrders) > 0 {
+        now := time.Now().UTC().Format(time.RFC3339)
+        err := a.DB.Request(r.Context(), http.MethodPatch, "services?id=eq."+serviceID, map[string]any{
+            "is_active":  false,
+            "deleted_at": now,
+        }, "return=minimal", nil)
+        if err != nil {
+            // Fallback jika kolom deleted_at belum dimigrasi
+            err = a.DB.Request(r.Context(), http.MethodPatch, "services?id=eq."+serviceID, map[string]any{
+                "is_active": false,
+            }, "return=minimal", nil)
+            if err != nil {
+                writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+                return
+            }
+        }
+        writeJSON(w, http.StatusOK, map[string]string{"deleted": serviceID, "mode": "soft"})
+        return
+    }
+
     if err := a.DB.Request(r.Context(), http.MethodDelete, "services?id=eq."+serviceID, nil, "return=minimal", nil); err != nil {
         writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
-    writeJSON(w, http.StatusOK, map[string]string{"deleted": serviceID})
+    writeJSON(w, http.StatusOK, map[string]string{"deleted": serviceID, "mode": "hard"})
+}
+
+func (a *API) recalculateWorkerRating(r *http.Request, workerID string) {
+    if workerID == "" {
+        return
+    }
+    var revs []struct {
+        Rating int `json:"rating"`
+    }
+    if err := a.DB.Request(r.Context(), http.MethodGet, "reviews?reviewee_id=eq."+workerID+"&select=rating", nil, "", &revs); err != nil {
+        return
+    }
+    total := len(revs)
+    avg := 0.0
+    if total > 0 {
+        sum := 0
+        for _, rv := range revs {
+            sum += rv.Rating
+        }
+        avg = math.Round((float64(sum)/float64(total))*100) / 100
+    }
+    _ = a.DB.Request(r.Context(), http.MethodPatch, "profiles?id=eq."+workerID, map[string]any{
+        "total_reviews":  total,
+        "average_rating": avg,
+    }, "return=minimal", nil)
 }
 
 func (a *API) UpdateReview(w http.ResponseWriter, r *http.Request) {
@@ -705,6 +832,18 @@ func (a *API) UpdateReview(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload tidak valid"})
         return
     }
+    if req.Rating < 1 {
+        req.Rating = 1
+    }
+    if req.Rating > 5 {
+        req.Rating = 5
+    }
+
+    var existing []struct {
+        RevieweeID *string `json:"reviewee_id"`
+    }
+    _ = a.DB.Request(r.Context(), http.MethodGet, "reviews?id=eq."+reviewID+"&select=reviewee_id", nil, "", &existing)
+
     if err := a.DB.Request(r.Context(), http.MethodPatch, "reviews?id=eq."+reviewID, map[string]any{
         "rating":  req.Rating,
         "comment": req.Comment,
@@ -712,14 +851,25 @@ func (a *API) UpdateReview(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
+    if len(existing) > 0 && existing[0].RevieweeID != nil {
+        a.recalculateWorkerRating(r, *existing[0].RevieweeID)
+    }
     writeJSON(w, http.StatusOK, map[string]string{"updated": reviewID})
 }
 
 func (a *API) DeleteReview(w http.ResponseWriter, r *http.Request) {
     reviewID := chi.URLParam(r, "id")
+    var existing []struct {
+        RevieweeID *string `json:"reviewee_id"`
+    }
+    _ = a.DB.Request(r.Context(), http.MethodGet, "reviews?id=eq."+reviewID+"&select=reviewee_id", nil, "", &existing)
+
     if err := a.DB.Request(r.Context(), http.MethodDelete, "reviews?id=eq."+reviewID, nil, "return=minimal", nil); err != nil {
         writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
+    }
+    if len(existing) > 0 && existing[0].RevieweeID != nil {
+        a.recalculateWorkerRating(r, *existing[0].RevieweeID)
     }
     writeJSON(w, http.StatusOK, map[string]string{"deleted": reviewID})
 }

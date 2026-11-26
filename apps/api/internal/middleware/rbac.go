@@ -38,20 +38,22 @@ func (g *AuthGuard) Authenticate(next http.Handler) http.Handler {
 			}
 			return []byte(g.JWTSecret), nil
 		})
-		if err != nil || !token.Valid {
-			http.Error(w, `{"error":"sesi tidak valid"}`, http.StatusUnauthorized)
-			return
+
+		var userID string
+		if err == nil && token != nil && token.Valid {
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				userID, _ = claims["sub"].(string)
+			}
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			http.Error(w, `{"error":"klaim token rusak"}`, http.StatusUnauthorized)
-			return
-		}
-		userID, _ := claims["sub"].(string)
+		// Fallback ke Supabase Auth (/auth/v1/user) jika token memakai ES256/RS256 (JWKS) atau JWT secret berbeda
 		if userID == "" {
-			http.Error(w, `{"error":"user id kosong"}`, http.StatusUnauthorized)
-			return
+			uid, vErr := g.verifyTokenViaSupabase(r.Context(), tokenStr)
+			if vErr != nil || uid == "" {
+				http.Error(w, `{"error":"sesi tidak valid"}`, http.StatusUnauthorized)
+				return
+			}
+			userID = uid
 		}
 
 		// Ambil role asli langsung dari tabel profiles memakai Service Role Key
@@ -82,6 +84,34 @@ func (g *AuthGuard) RequireRoles(allowed ...string) func(http.Handler) http.Hand
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func (g *AuthGuard) verifyTokenViaSupabase(ctx context.Context, accessToken string) (string, error) {
+	url := strings.TrimRight(g.SupabaseURL, "/") + "/auth/v1/user"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("apikey", g.ServiceRoleKey)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("auth user status %d", resp.StatusCode)
+	}
+
+	var user struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil || user.ID == "" {
+		return "", fmt.Errorf("user id kosong")
+	}
+	return user.ID, nil
 }
 
 func (g *AuthGuard) fetchProfileRole(ctx context.Context, userID string) (string, error) {

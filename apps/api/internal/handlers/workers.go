@@ -6,12 +6,26 @@ import (
     "fmt"
     "io"
     "net/http"
+    "net/url"
     "os"
     "strings"
 
     "github.com/go-chi/chi/v5"
     "github.com/neechko/meroo.gi/apps/api/internal/middleware"
 )
+
+func normalizeSeniority(raw string) (string, bool) {
+    switch strings.ToLower(strings.TrimSpace(raw)) {
+    case "junior":
+        return "junior", true
+    case "mid":
+        return "mid", true
+    case "senior", "lead":
+        return "senior", true
+    default:
+        return "", false
+    }
+}
 
 func (a *API) ListWorkerInvites(w http.ResponseWriter, r *http.Request) {
     var invites []map[string]any
@@ -38,7 +52,9 @@ func (a *API) InviteWorker(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, http.StatusBadRequest, map[string]string{"error": "masukkan alamat Gmail yang valid"})
         return
     }
-    if req.SeniorityLevel != "junior" && req.SeniorityLevel != "senior" && req.SeniorityLevel != "lead" {
+    if norm, ok := normalizeSeniority(req.SeniorityLevel); ok {
+        req.SeniorityLevel = norm
+    } else {
         req.SeniorityLevel = "junior"
     }
     if req.MaxCapacity < 1 {
@@ -48,7 +64,7 @@ func (a *API) InviteWorker(w http.ResponseWriter, r *http.Request) {
     var existing []struct {
         ID string `json:"id"`
     }
-    _ = a.DB.Request(r.Context(), http.MethodGet, "profiles?email=ilike."+email+"&select=id&limit=1", nil, "", &existing)
+    _ = a.DB.Request(r.Context(), http.MethodGet, "profiles?email=ilike."+url.QueryEscape(email)+"&select=id&limit=1", nil, "", &existing)
 
     inviteStatus := "pending"
     if len(existing) > 0 {
@@ -128,6 +144,8 @@ func (a *API) UpdateUserAccount(w http.ResponseWriter, r *http.Request) {
         Password       string `json:"password"`
         SeniorityLevel string `json:"seniority_level"`
         MaxCapacity    int    `json:"max_capacity"`
+        IsAvailable    *bool  `json:"is_available"`
+        IsOnLeave      *bool  `json:"is_on_leave"`
     }
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         writeJSON(w, http.StatusBadRequest, map[string]string{"error": "payload tidak valid"})
@@ -159,11 +177,17 @@ func (a *API) UpdateUserAccount(w http.ResponseWriter, r *http.Request) {
     if req.Role == "consumer" || req.Role == "worker" || req.Role == "admin" {
         profileUpdates["role"] = req.Role
     }
-    if req.SeniorityLevel == "junior" || req.SeniorityLevel == "senior" || req.SeniorityLevel == "lead" {
-        profileUpdates["seniority_level"] = req.SeniorityLevel
+    if norm, ok := normalizeSeniority(req.SeniorityLevel); ok {
+        profileUpdates["seniority_level"] = norm
     }
     if req.MaxCapacity > 0 {
         profileUpdates["max_capacity"] = req.MaxCapacity
+    }
+    if req.IsAvailable != nil {
+        profileUpdates["is_available"] = *req.IsAvailable
+    }
+    if req.IsOnLeave != nil {
+        profileUpdates["is_on_leave"] = *req.IsOnLeave
     }
 
     // Sinkronkan perubahan Email / Password ke Supabase Auth Admin API
