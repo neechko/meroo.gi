@@ -30,7 +30,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 WebBrowser.maybeCompleteAuthSession();
 
-type TabKey = 'home' | 'catalog' | 'orders' | 'studio' | 'profile';
+type TabKey = 'home' | 'catalog' | 'orders' | 'admin' | 'worker' | 'profile';
 
 function parseOAuthCallback(url: string) {
   const normalized = url.replace('#', '?');
@@ -56,7 +56,6 @@ function MainApp() {
   const [role, setRole] = useState<'consumer' | 'worker' | 'admin'>('consumer');
   const [profile, setProfile] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
-  const [studioMode, setStudioMode] = useState<'worker' | 'admin'>('admin');
 
   const [services, setServices] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -71,13 +70,48 @@ function MainApp() {
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Horizontal Swipe Pager & 1:1 Tab Bar Pill Sync
   const pagerRef = useRef<any>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
-  const studioSlideX = useRef(new Animated.Value(0)).current;
-  const studioOpacity = useRef(new Animated.Value(1)).current;
   const tabBarHideAnim = useRef(new Animated.Value(0)).current;
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  const oauthLockRef = useRef(false);
+  const lastSyncedUserRef = useRef<string | null>(null);
+
+  const navItems: { key: TabKey; label: string; iconName: string }[] = [
+    { key: 'home', label: 'Beranda', iconName: 'home' },
+    { key: 'catalog', label: 'Katalog', iconName: 'compass' },
+    { key: 'orders', label: 'Pesanan', iconName: 'clipboard-list' },
+    ...(role === 'admin'
+      ? [
+          { key: 'admin' as TabKey, label: 'Admin', iconName: 'chart-pie' },
+          { key: 'worker' as TabKey, label: 'Worker', iconName: 'sliders-h' },
+        ]
+      : role === 'worker'
+      ? [{ key: 'worker' as TabKey, label: 'Worker', iconName: 'sliders-h' }]
+      : []),
+    { key: 'profile', label: 'Akun', iconName: 'user' },
+  ];
+
+  function goToTab(nextTab: TabKey) {
+    const idx = navItems.findIndex((item) => item.key === nextTab);
+    if (idx < 0) return;
+    setActiveTab(nextTab);
+    pagerRef.current?.scrollTo({ x: idx * screenWidth, animated: true });
+  }
+
+  useEffect(() => {
+    if (__DEV__) return;
+    (async () => {
+      try {
+        const check = await Updates.checkForUpdateAsync();
+        if (check.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     const s1 = Keyboard.addListener('keyboardDidShow', () => {
@@ -103,62 +137,6 @@ function MainApp() {
       s2.remove();
     };
   }, [tabBarHideAnim]);
-
-  const oauthLockRef = useRef(false);
-  const lastSyncedUserRef = useRef<string | null>(null);
-
-  const isStaff = role === 'worker' || role === 'admin';
-  const navItems: { key: TabKey; label: string; iconName: string }[] = [
-    { key: 'home', label: 'Beranda', iconName: 'home' },
-    { key: 'catalog', label: 'Katalog', iconName: 'compass' },
-    { key: 'orders', label: 'Pesanan', iconName: 'clipboard-list' },
-    ...(isStaff ? [{ key: 'studio' as TabKey, label: role === 'admin' ? 'Studio' : 'Worker', iconName: 'sliders-h' }] : []),
-    { key: 'profile', label: 'Akun', iconName: 'user' },
-  ];
-
-  function goToTab(nextTab: TabKey) {
-    const idx = navItems.findIndex((item) => item.key === nextTab);
-    if (idx < 0) return;
-    setActiveTab(nextTab);
-    pagerRef.current?.scrollTo({ x: idx * screenWidth, animated: true });
-  }
-
-  function switchStudioMode(nextMode: 'worker' | 'admin') {
-    if (nextMode === studioMode) return;
-    const direction = nextMode === 'worker' ? 1 : -1;
-    studioSlideX.setValue(direction * 34);
-    studioOpacity.setValue(0.25);
-
-    Animated.parallel([
-      Animated.spring(studioSlideX, {
-        toValue: 0,
-        speed: 24,
-        bounciness: 5,
-        useNativeDriver: true,
-      }),
-      Animated.timing(studioOpacity, {
-        toValue: 1,
-        duration: 210,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    setStudioMode(nextMode);
-  }
-
-useEffect(() => {
-  if (__DEV__) return;
-  (async () => {
-    try {
-      const check = await Updates.checkForUpdateAsync();
-      if (check.isAvailable) {
-        await Updates.fetchUpdateAsync();
-        await Updates.reloadAsync();
-      }
-    } catch {}
-  })();
-}, []);
 
   useEffect(() => {
     let mounted = true;
@@ -217,8 +195,7 @@ useEffect(() => {
       const nextRole = normalizeRole(profRes.data.role);
       setRole(nextRole);
       setProfile(profRes.data);
-      if (nextRole === 'worker') setStudioMode('worker');
-      if (nextRole === 'consumer' && activeTab === 'studio') {
+      if (nextRole === 'consumer' && (activeTab === 'admin' || activeTab === 'worker')) {
         setActiveTab('home');
       }
     }
@@ -323,7 +300,7 @@ useEffect(() => {
           });
           if (sessErr) throw sessErr;
         } else {
-          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth Ã¢â€ â€™ URL Configuration.`);
+          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth -> URL Configuration.`);
         }
       } else {
         showToast('Login Google dibatalkan.', 'info');
@@ -350,109 +327,111 @@ useEffect(() => {
 
   if (!session?.user) {
     return (
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginWrap}>
-        <StatusBar style="dark" />
-        <View style={styles.loginCard}>
-          <Text style={styles.brand}>meroo.gi</Text>
-          <Text style={styles.loginSub}>Studio Joki & Rawat Akun Genshin Impact</Text>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginWrap}>
+          <StatusBar style="dark" />
+          <View style={styles.loginCard}>
+            <Text style={styles.brand}>meroo.gi</Text>
+            <Text style={styles.loginSub}>Studio Joki & Rawat Akun Genshin Impact</Text>
 
-          <View style={styles.authSwitch}>
-            <TouchableOpacity
-              style={[styles.authTab, authMode === 'login' && styles.authTabActive]}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setAuthMode('login');
-              }}
-            >
-              <Text style={[styles.authTabText, authMode === 'login' && styles.authTabTextActive]}>Masuk</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.authTab, authMode === 'register' && styles.authTabActive]}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setAuthMode('register');
-              }}
-            >
-              <Text style={[styles.authTabText, authMode === 'register' && styles.authTabTextActive]}>Daftar Akun</Text>
+            <View style={styles.authSwitch}>
+              <TouchableOpacity
+                style={[styles.authTab, authMode === 'login' && styles.authTabActive]}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setAuthMode('login');
+                }}
+              >
+                <Text style={[styles.authTabText, authMode === 'login' && styles.authTabTextActive]}>Masuk</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.authTab, authMode === 'register' && styles.authTabActive]}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setAuthMode('register');
+                }}
+              >
+                <Text style={[styles.authTabText, authMode === 'register' && styles.authTabTextActive]}>Daftar Akun</Text>
+              </TouchableOpacity>
+            </View>
+
+            {authMode === 'login' ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email atau Username"
+                  placeholderTextColor={SAGE.textSecondary}
+                  autoCapitalize="none"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={SAGE.textSecondary}
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={authLoading}>
+                  <Text style={styles.loginBtnText}>{authLoading ? 'Memproses...' : 'Masuk'}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nama Lengkap"
+                  placeholderTextColor={SAGE.textSecondary}
+                  value={regFullName}
+                  onChangeText={setRegFullName}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Username (contoh: ayla_gi)"
+                  placeholderTextColor={SAGE.textSecondary}
+                  autoCapitalize="none"
+                  value={regUsername}
+                  onChangeText={setRegUsername}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Alamat Email"
+                  placeholderTextColor={SAGE.textSecondary}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={regEmail}
+                  onChangeText={setRegEmail}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password (min. 6 karakter)"
+                  placeholderTextColor={SAGE.textSecondary}
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity style={styles.loginBtn} onPress={handleRegister} disabled={authLoading}>
+                  <Text style={styles.loginBtnText}>{authLoading ? 'Mendaftarkan...' : 'Buat Akun Costumer'}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>atau</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity style={styles.googleBtn} onPress={handleGoogleLogin} disabled={authLoading}>
+              <FontAwesome5 name="google" size={15} color={SAGE.primaryDark} />
+              <Text style={styles.googleBtnText}>
+                {authLoading ? 'Menghubungkan Google...' : 'Lanjutkan dengan Google'}
+              </Text>
             </TouchableOpacity>
           </View>
-
-          {authMode === 'login' ? (
-            <>
-              <TextInput
-                style={styles.input}
-                placeholder="Email atau Username"
-                placeholderTextColor={SAGE.textSecondary}
-                autoCapitalize="none"
-                value={identifier}
-                onChangeText={setIdentifier}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={SAGE.textSecondary}
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={authLoading}>
-                <Text style={styles.loginBtnText}>{authLoading ? 'Memproses...' : 'Masuk'}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TextInput
-                style={styles.input}
-                placeholder="Nama Lengkap"
-                placeholderTextColor={SAGE.textSecondary}
-                value={regFullName}
-                onChangeText={setRegFullName}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Username (contoh: ayla_gi)"
-                placeholderTextColor={SAGE.textSecondary}
-                autoCapitalize="none"
-                value={regUsername}
-                onChangeText={setRegUsername}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Alamat Email"
-                placeholderTextColor={SAGE.textSecondary}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                value={regEmail}
-                onChangeText={setRegEmail}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Password (min. 6 karakter)"
-                placeholderTextColor={SAGE.textSecondary}
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity style={styles.loginBtn} onPress={handleRegister} disabled={authLoading}>
-                <Text style={styles.loginBtnText}>{authLoading ? 'Mendaftarkan...' : 'Buat Akun Costumer'}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>atau</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity style={styles.googleBtn} onPress={handleGoogleLogin} disabled={authLoading}>
-            <FontAwesome5 name="google" size={15} color={SAGE.primaryDark} />
-            <Text style={styles.googleBtnText}>
-              {authLoading ? 'Menghubungkan Google...' : 'Lanjutkan dengan Google'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView></KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -463,7 +442,6 @@ useEffect(() => {
   const workerOrders =
     role === 'admin' ? orders : orders.filter((o) => o.worker_id === session.user.id);
 
-  // Hitung lebar tiap tab dan posisi kapsul hijau 1:1 mengikuti scrollX jari
   const tabBarOuterWidth = Math.max(0, screenWidth - 32);
   const singlePillWidth = Math.max(0, tabBarOuterWidth - 12) / navItems.length;
   const pillTranslateX = scrollX.interpolate({
@@ -476,7 +454,6 @@ useEffect(() => {
     <View style={{ flex: 1, backgroundColor: SAGE.bgCanvas }}>
       <StatusBar style="dark" />
 
-      {/* Swipeable Horizontal Pager: Geser jari ke kiri/kanan untuk pindah halaman */}
       <Animated.ScrollView
         ref={pagerRef}
         horizontal
@@ -522,64 +499,31 @@ useEffect(() => {
             {item.key === 'orders' && (
               <OrdersScreen orders={myOrders} onSelectOrder={setSelectedOrder} />
             )}
-            {item.key === 'studio' && isStaff && (
-              <View style={{ flex: 1 }}>
-                {role === 'admin' && (
-                  <View style={styles.modeSwitcher}>
-                    <TouchableOpacity
-                      style={[styles.modePill, studioMode === 'admin' && styles.modePillActive]}
-                      onPress={() => switchStudioMode('admin')}
-                    >
-                      <Text style={[styles.modeText, studioMode === 'admin' && styles.modeTextActive]}>Admin & Keuangan</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.modePill, studioMode === 'worker' && styles.modePillActive]}
-                      onPress={() => switchStudioMode('worker')}
-                    >
-                      <Text style={[styles.modeText, studioMode === 'worker' && styles.modeTextActive]}>Worker Workspace</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                <Animated.View
-                  style={{
-                    flex: 1,
-                    opacity: studioOpacity,
-                    transform: [{ translateX: studioSlideX }],
-                  }}
-                >
-                  {studioMode === 'admin' && role === 'admin' ? (
-                    <AdminScreen
-                      allOrders={orders}
-                      services={services}
-                      onRefresh={() => syncWorkspace()}
-                      onSelectOrder={setSelectedOrder}
-                    />
-                  ) : (
-                    <WorkerScreen
-                      userId={session.user.id}
-                      assignedOrders={workerOrders}
-                      onSelectOrder={setSelectedOrder}
-                      onRefresh={() => syncWorkspace()}
-                      onOptimisticOrderUpdate={(oid, patch) =>
-                        setOrders((prev) => prev.map((o) => (o.id === oid ? { ...o, ...patch } : o)))
-                      }
-                    />
-                  )}
-                </Animated.View>
-              </View>
+            {item.key === 'admin' && role === 'admin' && (
+              <AdminScreen
+                allOrders={orders}
+                services={services}
+                onRefresh={() => syncWorkspace()}
+                onSelectOrder={setSelectedOrder}
+              />
+            )}
+            {item.key === 'worker' && (role === 'worker' || role === 'admin') && (
+              <WorkerScreen
+                userId={session.user.id}
+                assignedOrders={workerOrders}
+                onSelectOrder={setSelectedOrder}
+                onRefresh={() => syncWorkspace()}
+                onOptimisticOrderUpdate={(oid, patch) =>
+                  setOrders((prev) => prev.map((o) => (o.id === oid ? { ...o, ...patch } : o)))
+                }
+              />
             )}
             {item.key === 'profile' && (
               <ProfileScreen
                 profile={profile}
                 role={role}
-                onGoWorker={() => {
-                  setStudioMode('worker');
-                  goToTab('studio');
-                }}
-                onGoAdmin={() => {
-                  setStudioMode('admin');
-                  goToTab('studio');
-                }}
+                onGoWorker={() => goToTab('worker')}
+                onGoAdmin={() => goToTab('admin')}
                 onProfileUpdated={(patch) => setProfile((prev: any) => ({ ...(prev || {}), ...patch }))}
               />
             )}
@@ -587,8 +531,16 @@ useEffect(() => {
         ))}
       </Animated.ScrollView>
 
-      {/* Bottom Tab Bar dengan Kapsul Hijau Meluncur 1:1 Mengikuti Geseran Jari */}
-      <Animated.View pointerEvents={keyboardVisible ? 'none' : 'auto'} style={[styles.tabBar, { opacity: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ translateY: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 110] }) }] }]}>
+      <Animated.View
+        pointerEvents={keyboardVisible ? 'none' : 'auto'}
+        style={[
+          styles.tabBar,
+          {
+            opacity: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+            transform: [{ translateY: tabBarHideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 110] }) }],
+          },
+        ]}
+      >
         {singlePillWidth > 0 && (
           <Animated.View
             pointerEvents="none"
@@ -617,9 +569,9 @@ useEffect(() => {
               onPress={() => goToTab(key)}
             >
               <Animated.View style={{ transform: [{ scale: iconScale }] }}>
-                <FontAwesome5 name={iconName} size={15} color={active ? '#FFF' : SAGE.textSecondary} />
+                <FontAwesome5 name={iconName} size={14} color={active ? '#FFF' : SAGE.textSecondary} />
               </Animated.View>
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+              <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>{label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -702,17 +654,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   googleBtnText: { fontFamily: FONTS.displayBold, fontSize: 14, color: SAGE.textPrimary },
-  modeSwitcher: {
-    backgroundColor: SAGE.bgHeader,
-    paddingTop: 48,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  modePill: { flex: 1, backgroundColor: 'rgba(255,255,255,0.65)', paddingVertical: 8, borderRadius: 14, alignItems: 'center' },
-  modePillActive: { backgroundColor: SAGE.primaryDark },
-  modeText: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.textPrimary },
-  modeTextActive: { color: '#FFF' },
   tabBar: {
     position: 'absolute',
     bottom: 16,

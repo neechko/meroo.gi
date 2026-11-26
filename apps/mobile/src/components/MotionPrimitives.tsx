@@ -10,9 +10,9 @@ interface CounterProps {
   style?: StyleProp<TextStyle>;
 }
 
-export function AnimatedCounter({ value, suffix = '', prefix = '', duration = 750, style }: CounterProps) {
+export function AnimatedCounter({ value, suffix = '', prefix = '', duration = 850, style }: CounterProps) {
   const target = Math.max(0, Math.round(value || 0));
-  const [display, setDisplay] = useState(target);
+  const [display, setDisplay] = useState(0);
   const anim = useRef(new Animated.Value(0)).current;
   const prevTargetRef = useRef(0);
 
@@ -51,62 +51,84 @@ interface ProgressBarProps {
   height?: number;
   trackColor?: string;
   fillColor?: string;
+  isActive?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
 export function AnimatedProgressBar({
   percentage,
-  height = 7,
+  height = 8,
   trackColor = SAGE.surfaceSoft,
   fillColor = SAGE.primary,
+  isActive = false,
   style,
 }: ProgressBarProps) {
   const clamped = Math.max(0, Math.min(100, Math.round(percentage || 0)));
   const widthAnim = useRef(new Animated.Value(0)).current;
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const tipPulse = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
+    widthAnim.setValue(0);
     Animated.timing(widthAnim, {
       toValue: clamped,
-      duration: 850,
+      duration: 950,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
   }, [clamped, widthAnim]);
 
   useEffect(() => {
-    if (clamped <= 0) return;
+    if (!isActive || clamped <= 0 || clamped >= 100) {
+      tipPulse.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
-      Animated.timing(shimmerAnim, {
-        toValue: 1,
-        duration: 2000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
+      Animated.sequence([
+        Animated.timing(tipPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+        Animated.timing(tipPulse, {
+          toValue: 0.35,
+          duration: 900,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+      ])
     );
     loop.start();
     return () => loop.stop();
-  }, [clamped, shimmerAnim]);
+  }, [isActive, clamped, tipPulse]);
 
   const widthPercent = widthAnim.interpolate({
     inputRange: [0, 100],
     outputRange: ['0%', '100%'],
   });
 
-  const shimmerX = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-80, 260],
-  });
-
   return (
     <View style={[styles.track, { height, borderRadius: height, backgroundColor: trackColor }, style]}>
-      <Animated.View style={[styles.fill, { width: widthPercent, height, borderRadius: height, backgroundColor: fillColor }]}>
-        {clamped > 0 && (
+      <Animated.View
+        style={[
+          styles.fill,
+          {
+            width: widthPercent,
+            height,
+            borderRadius: height,
+            backgroundColor: fillColor,
+          },
+        ]}
+      >
+        {isActive && clamped > 0 && clamped < 100 && (
           <Animated.View
             style={[
-              styles.shimmer,
+              styles.tipGlow,
               {
-                transform: [{ translateX: shimmerX }],
+                width: height + 4,
+                height,
+                borderRadius: height,
+                opacity: tipPulse,
               },
             ]}
           />
@@ -126,7 +148,7 @@ export function StaggerItem({ index, children, style }: StaggerProps) {
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const delay = Math.min(index, 8) * 55;
+    const delay = Math.min(index, 8) * 50;
     Animated.spring(anim, {
       toValue: 1,
       delay,
@@ -138,7 +160,7 @@ export function StaggerItem({ index, children, style }: StaggerProps) {
 
   const translateY = anim.interpolate({
     inputRange: [0, 1],
-    outputRange: [18, 0],
+    outputRange: [16, 0],
   });
   const scale = anim.interpolate({
     inputRange: [0, 1],
@@ -252,13 +274,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: {
-    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
-  shimmer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 48,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+  tipGlow: {
+    backgroundColor: '#FFFFFF',
   },
 });

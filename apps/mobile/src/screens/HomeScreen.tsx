@@ -45,7 +45,7 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
   const initials = (profile?.full_name || 'M').slice(0, 1).toUpperCase();
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.topBar}>
         <SpringTouchable style={styles.userLeft} onPress={onGoProfile}>
           {profile?.avatar_url ? (
@@ -97,7 +97,7 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
                 <Text style={styles.activeTitle} numberOfLines={1}>{featured.services?.name || 'Pesanan Aktif'}</Text>
               </View>
               <Text style={styles.activeSub} numberOfLines={1}>
-                UID {featured.game_uid} â€¢ {featured.status.toUpperCase()} â€¢ {formatIDR(featured.total_price)}
+                {`UID ${featured.game_uid} \u2022 ${featured.status.toUpperCase()} \u2022 ${formatIDR(featured.total_price)}`}
               </Text>
             </View>
             <FontAwesome5 name="arrow-right" size={15} color={SAGE.primaryDark} />
@@ -113,23 +113,26 @@ export function HomeScreen({ profile, role, orders, onRefresh, onSelectOrder, on
         <Text style={styles.sectionTitle}>Pantauan Pesanan Terbaru</Text>
       </StaggerItem>
 
-      {orders.slice(0, 4).map((ord, idx) => (
-        <StaggerItem key={ord.id} index={idx + 3}>
-          <SpringTouchable style={styles.orderRow} onPress={() => onSelectOrder(ord)}>
-            <View style={styles.pctBadge}>
-              <AnimatedCounter value={ord.current_percentage || 0} suffix="%" duration={800} style={styles.pctBadgeText} />
-            </View>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.orderName}>{ord.services?.name || 'Layanan'}</Text>
-              <Text style={styles.orderMeta}>
-                UID {ord.game_uid} â€¢ {ord.game_server}
-              </Text>
-              <AnimatedProgressBar percentage={ord.current_percentage || 0} height={5} />
-            </View>
-            <Text style={styles.orderPrice}>{formatIDR(ord.total_price)}</Text>
-          </SpringTouchable>
-        </StaggerItem>
-      ))}
+      {orders.slice(0, 4).map((ord, idx) => {
+        const isRunning = ord.status === 'paid' || ord.status === 'in_progress';
+        return (
+          <StaggerItem key={ord.id} index={idx + 3}>
+            <SpringTouchable style={styles.orderRow} onPress={() => onSelectOrder(ord)}>
+              <View style={styles.pctBadge}>
+                <AnimatedCounter value={ord.current_percentage || 0} suffix="%" duration={850} style={styles.pctBadgeText} />
+              </View>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={styles.orderName}>{ord.services?.name || 'Layanan'}</Text>
+                <Text style={styles.orderMeta}>
+                  {`UID ${ord.game_uid} \u2022 ${ord.game_server}`}
+                </Text>
+                <AnimatedProgressBar percentage={ord.current_percentage || 0} height={6} isActive={isRunning} />
+              </View>
+              <Text style={styles.orderPrice}>{formatIDR(ord.total_price)}</Text>
+            </SpringTouchable>
+          </StaggerItem>
+        );
+      })}
     </ScrollView>
   );
 }

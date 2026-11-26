@@ -46,24 +46,31 @@ export function OrdersScreen({ orders, onSelectOrder }: Props) {
       <View style={styles.header}>
         <Text style={styles.title}>Pesanan Saya ({orders.length})</Text>
         <Text style={styles.sub}>Ketuk pesanan untuk kalender checklist, vault, atau struk</Text>
-        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+
+        {/* Segmented Tab Bar 4 Kolom: bebas konflik dengan swipe gesture layar */}
+        <View style={styles.segmentRow}>
           {(
             [
-              { key: 'all', label: `Semua (${counts.all})` },
-              { key: 'active', label: `Aktif (${counts.active})` },
-              { key: 'completed', label: `Selesai (${counts.completed})` },
-              { key: 'cancelled', label: `Batal (${counts.cancelled})` },
+              { key: 'all', label: 'Semua', count: counts.all },
+              { key: 'active', label: 'Aktif', count: counts.active },
+              { key: 'completed', label: 'Selesai', count: counts.completed },
+              { key: 'cancelled', label: 'Batal', count: counts.cancelled },
             ] as const
-          ).map((tab) => (
-            <SpringTouchable
-              key={tab.key}
-              style={[styles.chip, filter === tab.key && styles.chipActive]}
-              onPress={() => selectFilter(tab.key)}
-            >
-              <Text style={[styles.chipText, filter === tab.key && styles.chipTextActive]}>{tab.label}</Text>
-            </SpringTouchable>
-          ))}
-        </ScrollView>
+          ).map((tab) => {
+            const active = filter === tab.key;
+            return (
+              <SpringTouchable
+                key={tab.key}
+                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+                onPress={() => selectFilter(tab.key)}
+              >
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>
+                  {`${tab.label} (${tab.count})`}
+                </Text>
+              </SpringTouchable>
+            );
+          })}
+        </View>
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
@@ -80,9 +87,9 @@ export function OrdersScreen({ orders, onSelectOrder }: Props) {
                   <Text style={styles.status}>{ord.status.toUpperCase()}</Text>
                 </View>
                 <Text style={styles.meta}>
-                  UID {ord.game_uid} â€¢ Server {ord.game_server}
+                  {`UID ${ord.game_uid} \u2022 Server ${ord.game_server}`}
                 </Text>
-                <AnimatedProgressBar percentage={ord.current_percentage || 0} height={8} />
+                <AnimatedProgressBar percentage={ord.current_percentage || 0} height={8} isActive={isRunning} />
                 <View style={styles.row}>
                   <Text style={styles.price}>{formatIDR(ord.total_price)}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -90,7 +97,7 @@ export function OrdersScreen({ orders, onSelectOrder }: Props) {
                       value={ord.current_percentage || 0}
                       prefix="Progres "
                       suffix="%"
-                      duration={850}
+                      duration={900}
                       style={styles.detailLink}
                     />
                     <FontAwesome5 name="chevron-right" size={12} color={SAGE.primaryDark} />
@@ -110,10 +117,33 @@ const styles = StyleSheet.create({
   header: { backgroundColor: SAGE.bgHeader, paddingTop: 50, paddingBottom: 14, paddingHorizontal: 18 },
   title: { fontFamily: FONTS.displayExtra, fontSize: 22, color: SAGE.textPrimary },
   sub: { fontFamily: FONTS.body, fontSize: 12, color: SAGE.primaryDark, marginTop: 2 },
-  chip: { backgroundColor: SAGE.surfaceCard, paddingHorizontal: 13, paddingVertical: 7, borderRadius: 14, marginRight: 8 },
-  chipActive: { backgroundColor: SAGE.primary },
-  chipText: { fontFamily: FONTS.bodyBold, fontSize: 12, color: SAGE.textSecondary },
-  chipTextActive: { color: '#FFF' },
+  segmentRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    borderRadius: 16,
+    padding: 4,
+    gap: 4,
+    marginTop: 12,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: SAGE.primary,
+  },
+  segmentText: {
+    fontFamily: FONTS.bodyBold,
+    fontSize: 11,
+    color: SAGE.textSecondary,
+  },
+  segmentTextActive: {
+    color: '#FFFFFF',
+  },
   list: { padding: 16, gap: 12, paddingBottom: 124 },
   card: {
     backgroundColor: SAGE.surfaceCard,

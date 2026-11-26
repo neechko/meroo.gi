@@ -261,7 +261,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Admin Studio</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+        <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.65)", borderRadius: 16, padding: 4, gap: 4, marginTop: 10 }}>
           {(['finance', 'orders', 'workers', 'catalog', 'reviews'] as const).map((t) => (
             <TouchableOpacity
               key={t}
@@ -281,7 +281,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}>
@@ -293,7 +293,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
                 <Text style={styles.cardTitle}>Omzet Selesai ({formatIDR(displayGross)})</Text>
               </View>
               <Text style={styles.escrowNote}>
-                Dana Order Aktif (Paid/Berjalan): {formatIDR(activeEscrowGross)} â€¢ Total Keseluruhan: {formatIDR(displayGross + activeEscrowGross)}
+                Dana Order Aktif (Paid/Berjalan): {formatIDR(activeEscrowGross)} • Total Keseluruhan: {formatIDR(displayGross + activeEscrowGross)}
               </Text>
 
               <FinanceDonutChart
@@ -354,7 +354,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
                 <Text style={styles.price}>{formatIDR(ord.total_price)}</Text>
               </View>
               <Text style={styles.meta}>
-                UID {ord.game_uid} â€¢ Status: {ord.status.toUpperCase()} ({ord.current_percentage}%)
+                UID {ord.game_uid} • Status: {ord.status.toUpperCase()} ({ord.current_percentage}%)
               </Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <SpringTouchable style={styles.primaryBtn} onPress={() => handleAutoAssign(ord.id)}>
@@ -418,7 +418,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
                     <View style={{ flex: 1 }}>
                       <Text style={styles.inviteEmail}>{inv.email}</Text>
                       <Text style={styles.meta}>
-                        Seniority: {inv.seniority_level} â€¢ Kapasitas: {inv.max_capacity} order
+                        Seniority: {inv.seniority_level} • Kapasitas: {inv.max_capacity} order
                       </Text>
                     </View>
                     <Text style={styles.rolePillText}>{inv.status.toUpperCase()}</Text>
@@ -461,7 +461,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
                     <View style={styles.rolePill}>
                       <Text style={styles.rolePillText}>{roleLabel(u.role)}</Text>
                     </View>
-                    <Text style={styles.manageLink}>Kelola Akun â†’</Text>
+                    <Text style={styles.manageLink}>Kelola Akun →</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -475,7 +475,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{s.name}</Text>
                 <Text style={styles.meta}>
-                  {formatIDR(s.base_price)} â€¢ {s.category}
+                  {formatIDR(s.base_price)} • {s.category}
                 </Text>
               </View>
               <SpringTouchable style={styles.delBtn} onPress={() => handleDeleteService(s.id)}>
@@ -497,8 +497,7 @@ export function AdminScreen({ allOrders, services, onRefresh, onSelectOrder }: P
                 <FontAwesome5 name="trash-alt" size={14} color={SAGE.danger} />
               </SpringTouchable>
             </View>
-          ))}
-      </ScrollView>
+          ))}</ScrollView>
 
       <Modal visible={!!editingUser} transparent animationType="slide" onRequestClose={() => setEditingUser(null)}>
         <View style={styles.modalBackdrop}>
