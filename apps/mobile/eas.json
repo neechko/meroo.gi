@@ -1,0 +1,32 @@
+{
+    "cli":  {
+                "version":  "\u003e= 12.0.0"
+            },
+    "build":  {
+                  "production":  {
+                                     "env":  {
+                                                 "EXPO_PUBLIC_SUPABASE_URL":  "https://pbvapbmjkperpoklkiyb.supabase.co",
+                                                 "EXPO_PUBLIC_API_URL":  "https://meroo-gi-goapi.vercel.app",
+                                                 "EXPO_PUBLIC_GO_API_URL":  "https://meroo-gi-goapi.vercel.app",
+                                                 "EXPO_PUBLIC_SUPABASE_ANON_KEY":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidmFwYm1qa3BlcnBva2xraXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NDk3ODIsImV4cCI6MjEwNDQyNTc4Mn0.-Ek5wgDNgzlUA1XakLoO2kuDyqMk1KkRXq_DvquDgLY"
+                                             },
+                                     "channel":  "production",
+                                     "android":  {
+                                                     "buildType":  "apk"
+                                                 }
+                                 },
+                  "preview":  {
+                                  "distribution":  "internal",
+                                  "env":  {
+                                              "EXPO_PUBLIC_SUPABASE_URL":  "https://pbvapbmjkperpoklkiyb.supabase.co",
+                                              "EXPO_PUBLIC_API_URL":  "https://meroo-gi-goapi.vercel.app",
+                                              "EXPO_PUBLIC_GO_API_URL":  "https://meroo-gi-goapi.vercel.app",
+                                              "EXPO_PUBLIC_SUPABASE_ANON_KEY":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidmFwYm1qa3BlcnBva2xraXliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NDk3ODIsImV4cCI6MjEwNDQyNTc4Mn0.-Ek5wgDNgzlUA1XakLoO2kuDyqMk1KkRXq_DvquDgLY"
+                                          },
+                                  "channel":  "preview",
+                                  "android":  {
+                                                  "buildType":  "apk"
+                                              }
+                              }
+              }
+}
