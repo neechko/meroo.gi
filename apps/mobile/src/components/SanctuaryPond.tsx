@@ -24,17 +24,17 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
   const waveBackAnim = useRef(new Animated.Value(0)).current;
   const waveTideAnim = useRef(new Animated.Value(0)).current;
   const gaugeWaveAnim = useRef(new Animated.Value(0)).current;
+  const gaugeWaveBackAnim = useRef(new Animated.Value(0)).current;
 
   const koiPeachAnim = useRef(new Animated.Value(0)).current;
   const koiJadeAnim = useRef(new Animated.Value(0)).current;
   const seaweedAnim = useRef(new Animated.Value(0)).current;
   const bubbleAnim = useRef(new Animated.Value(0)).current;
 
-  // Animasi permukaan air naik sesuai persentase
   useEffect(() => {
     Animated.spring(waterRiseAnim, {
       toValue: safePct,
-      speed: 10,
+      speed: 9,
       bounciness: 5,
       useNativeDriver: true,
     }).start();
@@ -44,7 +44,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     const frontWaveLoop = Animated.loop(
       Animated.timing(waveFrontAnim, {
         toValue: 1,
-        duration: 2300,
+        duration: 2100,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -53,7 +53,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     const backWaveLoop = Animated.loop(
       Animated.timing(waveBackAnim, {
         toValue: 1,
-        duration: 3300,
+        duration: 3000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -63,13 +63,13 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
       Animated.sequence([
         Animated.timing(waveTideAnim, {
           toValue: 1,
-          duration: 1800,
+          duration: 1600,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(waveTideAnim, {
           toValue: 0,
-          duration: 1800,
+          duration: 1600,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -79,7 +79,16 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     const gaugeWaveLoop = Animated.loop(
       Animated.timing(gaugeWaveAnim, {
         toValue: 1,
-        duration: 2000,
+        duration: 1850,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    const gaugeWaveBackLoop = Animated.loop(
+      Animated.timing(gaugeWaveBackAnim, {
+        toValue: 1,
+        duration: 2600,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -89,13 +98,13 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
       Animated.sequence([
         Animated.timing(koiPeachAnim, {
           toValue: 1,
-          duration: 3100,
+          duration: 3000,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(koiPeachAnim, {
           toValue: 0,
-          duration: 3100,
+          duration: 3000,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -106,13 +115,13 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
       Animated.sequence([
         Animated.timing(koiJadeAnim, {
           toValue: 1,
-          duration: 3700,
+          duration: 3500,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(koiJadeAnim, {
           toValue: 0,
-          duration: 3700,
+          duration: 3500,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -123,13 +132,13 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
       Animated.sequence([
         Animated.timing(seaweedAnim, {
           toValue: 1,
-          duration: 2400,
+          duration: 2200,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(seaweedAnim, {
           toValue: -1,
-          duration: 2400,
+          duration: 2200,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -139,7 +148,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     const bubbleLoop = Animated.loop(
       Animated.timing(bubbleAnim, {
         toValue: 1,
-        duration: 2900,
+        duration: 2700,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       })
@@ -149,6 +158,7 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     backWaveLoop.start();
     tideLoop.start();
     gaugeWaveLoop.start();
+    gaugeWaveBackLoop.start();
     koiPeachLoop.start();
     koiJadeLoop.start();
     seaweedLoop.start();
@@ -159,12 +169,13 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
       backWaveLoop.stop();
       tideLoop.stop();
       gaugeWaveLoop.stop();
+      gaugeWaveBackLoop.stop();
       koiPeachLoop.stop();
       koiJadeLoop.stop();
       seaweedLoop.stop();
       bubbleLoop.stop();
     };
-  }, [waveFrontAnim, waveBackAnim, waveTideAnim, gaugeWaveAnim, koiPeachAnim, koiJadeAnim, seaweedAnim, bubbleAnim]);
+  }, [waveFrontAnim, waveBackAnim, waveTideAnim, gaugeWaveAnim, gaugeWaveBackAnim, koiPeachAnim, koiJadeAnim, seaweedAnim, bubbleAnim]);
 
   function triggerRipple() {
     rippleScale.setValue(0.4);
@@ -190,28 +201,14 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
     ]).start();
   }
 
-  const frontWaveX = waveFrontAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -180],
-  });
-  const backWaveX = waveBackAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-180, 0],
-  });
-  const frontTideY = waveTideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1.6, -1.8],
-  });
-  const backTideY = waveTideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-1.5, 1.5],
-  });
-  const gaugeWaveX = gaugeWaveAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -112],
-  });
+  const frontWaveX = waveFrontAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -180] });
+  const backWaveX = waveBackAnim.interpolate({ inputRange: [0, 1], outputRange: [-180, 0] });
+  const frontTideY = waveTideAnim.interpolate({ inputRange: [0, 1], outputRange: [2.2, -2.2] });
+  const backTideY = waveTideAnim.interpolate({ inputRange: [0, 1], outputRange: [-2.0, 2.0] });
 
-  // Translasi vertikal permukaan air dalam lingkaran 112px (0% -> bawah, 100% -> penuh)
+  const gaugeWaveX = gaugeWaveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -112] });
+  const gaugeWaveBackX = gaugeWaveBackAnim.interpolate({ inputRange: [0, 1], outputRange: [-112, 0] });
+
   const gaugeWaterLevelY = waterRiseAnim.interpolate({
     inputRange: [0, 100],
     outputRange: [98, 2],
@@ -235,26 +232,37 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
   return (
     <TouchableOpacity activeOpacity={0.96} onPress={triggerRipple} style={{ width: '100%' }}>
       <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
-        {/* Lingkaran Indikator Persentase Atas dengan Air Naik + Gelombang */}
         <View style={styles.gaugeCircle}>
           <Animated.View
             style={[
               styles.gaugeWaveContainer,
-              {
-                transform: [{ translateX: gaugeWaveX }, { translateY: gaugeWaterLevelY }],
-              },
+              { transform: [{ translateX: gaugeWaveBackX }, { translateY: gaugeWaterLevelY }] },
             ]}
           >
             <Svg width="224" height="120" viewBox="0 0 224 120">
               <Path
-                d="M 0 7 Q 28 0, 56 7 T 112 7 Q 140 0, 168 7 T 224 7 L 224 120 L 0 120 Z"
+                d="M 0 9 Q 28 0, 56 9 T 112 9 Q 140 0, 168 9 T 224 9 L 224 120 L 0 120 Z"
+                fill="#88B7A6"
+              />
+            </Svg>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.gaugeWaveContainer,
+              { transform: [{ translateX: gaugeWaveX }, { translateY: gaugeWaterLevelY }] },
+            ]}
+          >
+            <Svg width="224" height="120" viewBox="0 0 224 120">
+              <Path
+                d="M 0 10 Q 28 1, 56 10 T 112 10 Q 140 1, 168 10 T 224 10 L 224 120 L 0 120 Z"
                 fill="#A7CEC0"
               />
               <Path
-                d="M 0 7 Q 28 0, 56 7 T 112 7 Q 140 0, 168 7 T 224 7"
+                d="M 0 10 Q 28 1, 56 10 T 112 10 Q 140 1, 168 10 T 224 10"
                 fill="none"
-                stroke="rgba(255,255,255,0.78)"
-                strokeWidth="1.6"
+                stroke="rgba(255,255,255,0.88)"
+                strokeWidth="2"
               />
             </Svg>
           </Animated.View>
@@ -265,7 +273,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
           </Text>
         </View>
 
-        {/* Kapsul Status Tengah dengan Live Pulse Dot */}
         <View style={styles.pillBar}>
           <View style={styles.pillItem}>
             <LivePulseDot color={SAGE.primary} size={7} active={activeCount > 0} />
@@ -279,7 +286,6 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
           </View>
         </View>
 
-        {/* Kolam Air Bawah dengan Gelombang 2 Lapis & Biota Aktif */}
         <View style={styles.bottomPond}>
           <Animated.View
             style={[
@@ -287,10 +293,10 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
               { transform: [{ translateX: backWaveX }, { translateY: backTideY }] },
             ]}
           >
-            <Svg width="720" height="80" viewBox="0 0 720 80">
+            <Svg width="720" height="84" viewBox="0 0 720 84">
               <Path
-                d="M 0 11 Q 45 2, 90 11 T 180 11 Q 225 2, 270 11 T 360 11 Q 405 2, 450 11 T 540 11 Q 585 2, 630 11 T 720 11 L 720 80 L 0 80 Z"
-                fill="#89B8A9"
+                d="M 0 14 Q 45 2, 90 14 T 180 14 Q 225 2, 270 14 T 360 14 Q 405 2, 450 14 T 540 14 Q 585 2, 630 14 T 720 14 L 720 84 L 0 84 Z"
+                fill="#82B3A3"
               />
             </Svg>
           </Animated.View>
@@ -301,16 +307,16 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
               { transform: [{ translateX: frontWaveX }, { translateY: frontTideY }] },
             ]}
           >
-            <Svg width="720" height="80" viewBox="0 0 720 80">
+            <Svg width="720" height="84" viewBox="0 0 720 84">
               <Path
-                d="M 0 14 Q 45 5, 90 14 T 180 14 Q 225 5, 270 14 T 360 14 Q 405 5, 450 14 T 540 14 Q 585 5, 630 14 T 720 14 L 720 80 L 0 80 Z"
+                d="M 0 17 Q 45 5, 90 17 T 180 17 Q 225 5, 270 17 T 360 17 Q 405 5, 450 17 T 540 17 Q 585 5, 630 17 T 720 17 L 720 84 L 0 84 Z"
                 fill="#A6CDBE"
               />
               <Path
-                d="M 0 14 Q 45 5, 90 14 T 180 14 Q 225 5, 270 14 T 360 14 Q 405 5, 450 14 T 540 14 Q 585 5, 630 14 T 720 14"
+                d="M 0 17 Q 45 5, 90 17 T 180 17 Q 225 5, 270 17 T 360 17 Q 405 5, 450 17 T 540 17 Q 585 5, 630 17 T 720 17"
                 fill="none"
-                stroke="rgba(255,255,255,0.82)"
-                strokeWidth="2"
+                stroke="rgba(255,255,255,0.9)"
+                strokeWidth="2.2"
               />
             </Svg>
           </Animated.View>
@@ -319,55 +325,32 @@ export function SanctuaryPond({ percentage, subtitle, activeCount, totalCount, c
             pointerEvents="none"
             style={[
               styles.touchRipple,
-              {
-                opacity: rippleOpacity,
-                transform: [{ scale: rippleScale }],
-              },
+              { opacity: rippleOpacity, transform: [{ scale: rippleScale }] },
             ]}
           />
 
           <Animated.View
             style={[
               styles.seaweed,
-              {
-                left: 22,
-                height: 34,
-                backgroundColor: '#4E7C6B',
-                transform: [{ translateX: weedShiftX }, { rotate: weedRotate }],
-              },
+              { left: 22, height: 34, backgroundColor: '#4E7C6B', transform: [{ translateX: weedShiftX }, { rotate: weedRotate }] },
             ]}
           />
           <Animated.View
             style={[
               styles.seaweed,
-              {
-                left: 33,
-                height: 26,
-                backgroundColor: '#6F9D8C',
-                transform: [{ translateX: weedShiftX }, { rotate: weedRotate }],
-              },
+              { left: 33, height: 26, backgroundColor: '#6F9D8C', transform: [{ translateX: weedShiftX }, { rotate: weedRotate }] },
             ]}
           />
           <Animated.View
             style={[
               styles.seaweed,
-              {
-                right: 22,
-                height: 34,
-                backgroundColor: '#4E7C6B',
-                transform: [{ translateX: weedShiftX }, { rotate: weedRotate }],
-              },
+              { right: 22, height: 34, backgroundColor: '#4E7C6B', transform: [{ translateX: weedShiftX }, { rotate: weedRotate }] },
             ]}
           />
           <Animated.View
             style={[
               styles.seaweed,
-              {
-                right: 33,
-                height: 26,
-                backgroundColor: '#E3A572',
-                transform: [{ translateX: weedShiftX }, { rotate: weedRotate }],
-              },
+              { right: 33, height: 26, backgroundColor: '#E3A572', transform: [{ translateX: weedShiftX }, { rotate: weedRotate }] },
             ]}
           />
 
@@ -477,7 +460,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
+    height: 84,
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingBottom: 4,
@@ -487,7 +470,7 @@ const styles = StyleSheet.create({
     bottom: -2,
     left: 0,
     width: 720,
-    height: 80,
+    height: 84,
   },
   touchRipple: {
     position: 'absolute',

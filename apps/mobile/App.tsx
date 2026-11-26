@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
+import * as Updates from 'expo-updates';
 import { makeRedirectUri } from 'expo-auth-session';
 import { useFonts } from 'expo-font';
 import { Outfit_600SemiBold, Outfit_700Bold, Outfit_800ExtraBold } from '@expo-google-fonts/outfit';
@@ -145,6 +146,19 @@ function MainApp() {
 
     setStudioMode(nextMode);
   }
+
+useEffect(() => {
+  if (__DEV__) return;
+  (async () => {
+    try {
+      const check = await Updates.checkForUpdateAsync();
+      if (check.isAvailable) {
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      }
+    } catch {}
+  })();
+}, []);
 
   useEffect(() => {
     let mounted = true;
@@ -309,7 +323,7 @@ function MainApp() {
           });
           if (sessErr) throw sessErr;
         } else {
-          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth â†’ URL Configuration.`);
+          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth Ã¢â€ â€™ URL Configuration.`);
         }
       } else {
         showToast('Login Google dibatalkan.', 'info');

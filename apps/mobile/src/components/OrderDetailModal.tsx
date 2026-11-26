@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, ScrollView, TextInput, Image,
-  StyleSheet, Share, KeyboardAvoidingView, Platform,
+  StyleSheet, Share, Platform,
   Animated, Easing, LayoutAnimation, UIManager, PanResponder, Keyboard,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -63,6 +63,13 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   });
 
   const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const sectionOffsets = useRef<Record<SectionKey, number>>({
+    checklist: 60,
+    vault: 280,
+    progress: 520,
+    chat: 760,
+  });
+
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(560)).current;
   const cardAnims = useRef([
@@ -86,7 +93,6 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   const isStaff = role === 'worker' || role === 'admin';
   const isOwner = order?.consumer_id === userId;
 
-  // Pantau tinggi keyboard agar konten modal tidak tertutup keyboard
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -103,6 +109,17 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
       hideSub.remove();
     };
   }, []);
+
+  function focusSection(key: SectionKey, toEnd = false) {
+    setTimeout(() => {
+      if (toEnd) {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      } else {
+        const y = Math.max(0, (sectionOffsets.current[key] || 0) - 12);
+        scrollViewRef.current?.scrollTo({ y, animated: true });
+      }
+    }, 160);
+  }
 
   const detailPanResponder = useRef(
     PanResponder.create({
@@ -562,7 +579,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
       ...prev,
       { id: 'msg-' + Date.now(), content: text, sender: { full_name: 'Saya' } },
     ]);
-    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    focusSection('chat', true);
     await supabase.from('messages').insert({
       order_id: order.id,
       sender_id: userId,
@@ -598,14 +615,15 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
   return (
     <Modal visible={renderModal} transparent animationType="none" statusBarTranslucent={false} onRequestClose={handleAnimatedClose}>
       <Animated.View style={[styles.modalBackdrop, { opacity: backdropAnim }]}>
-        <Animated.View style={[styles.sheetWrapper, { transform: [{ translateY: sheetAnim }] }]}>
-          <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Kontainer luar mengecil sebesar keyboardHeight agar ScrollView tidak pernah tertutup keyboard */}
+        <Animated.View style={[styles.sheetWrapper, { paddingBottom: keyboardHeight, transform: [{ translateY: sheetAnim }] }]}>
+          <View style={styles.container}>
             <View {...detailPanResponder.panHandlers} style={styles.headerWrap}>
               <View style={styles.sheetDragPill} />
               <View style={styles.header}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.headerTitle} numberOfLines={1}>{order.services?.name || 'Detail Pesanan'}</Text>
-                  <Text style={styles.headerSub}>UID {order.game_uid} â€¢ {order.game_server} â€¢ {order.status.toUpperCase()}</Text>
+                  <Text style={styles.headerSub}>UID {order.game_uid} • {order.game_server} • {order.status.toUpperCase()}</Text>
                 </View>
                 <TouchableOpacity onPress={handleAnimatedClose} style={styles.closeBtn}>
                   <FontAwesome5 name="times" size={17} color={SAGE.textPrimary} />
@@ -617,7 +635,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               ref={scrollViewRef}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.body, { paddingBottom: 48 + keyboardHeight }]}
+              contentContainerStyle={styles.body}
             >
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.receiptBtn} onPress={handleOpenReceipt}>
@@ -633,7 +651,10 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               </View>
 
               {/* Panel 1: Kalender & Checklist */}
-              <Animated.View style={[styles.card, getCardAnimStyle(0)]}>
+              <Animated.View
+                onLayout={(e) => { sectionOffsets.current.checklist = e.nativeEvent.layout.y; }}
+                style={[styles.card, getCardAnimStyle(0)]}
+              >
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('checklist')}>
                   <View style={styles.cardHead}>
                     <FontAwesome5 name="calendar-alt" size={15} color={SAGE.primary} />
@@ -702,6 +723,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                           placeholderTextColor={SAGE.textSecondary}
                           value={customTask}
                           onChangeText={setCustomTask}
+                          onFocus={() => focusSection('checklist')}
                         />
                         <TouchableOpacity
                           style={styles.cadenceBtn}
@@ -721,7 +743,10 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               </Animated.View>
 
               {/* Panel 2: Encrypted Vault */}
-              <Animated.View style={[styles.card, getCardAnimStyle(1)]}>
+              <Animated.View
+                onLayout={(e) => { sectionOffsets.current.vault = e.nativeEvent.layout.y; }}
+                style={[styles.card, getCardAnimStyle(1)]}
+              >
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('vault')}>
                   <View style={styles.cardHead}>
                     <FontAwesome5 name="lock" size={15} color={SAGE.primary} />
@@ -746,14 +771,16 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                           placeholderTextColor={SAGE.textSecondary}
                           value={loginId}
                           onChangeText={setLoginId}
+                          onFocus={() => focusSection('vault')}
                         />
                         <TextInput
                           style={styles.input}
-                          placeholder={vault?.has_password ? 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢ (Isi ulang jika ingin ubah)' : 'Password Akun Game'}
+                          placeholder={vault?.has_password ? '•••••••• (Isi ulang jika ingin ubah)' : 'Password Akun Game'}
                           placeholderTextColor={SAGE.textSecondary}
                           secureTextEntry
                           value={loginPass}
                           onChangeText={setLoginPass}
+                          onFocus={() => focusSection('vault')}
                         />
                         <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveVault}>
                           <Text style={styles.primaryBtnText}>Simpan Kredensial Terenkripsi</Text>
@@ -769,6 +796,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                                 placeholderTextColor={SAGE.textSecondary}
                                 value={verifCode}
                                 onChangeText={setVerifCode}
+                                onFocus={() => focusSection('vault')}
                               />
                               <TouchableOpacity style={styles.primaryBtn} onPress={handleSubmitCode}>
                                 <Text style={styles.primaryBtnText}>Kirim Kode</Text>
@@ -787,7 +815,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                             <Text style={styles.secretLine}>Password: {vault.password || '(Terkunci / Selesai)'}</Text>
                             <Text style={styles.secretLine}>
                               Status Verifikasi: {vault.verification_status}
-                              {vault.verification_code ? ' â†’ KODE: ' + vault.verification_code : ''}
+                              {vault.verification_code ? ' → KODE: ' + vault.verification_code : ''}
                             </Text>
                             <TouchableOpacity style={styles.secondaryBtn} onPress={handleRequestCode}>
                               <FontAwesome5 name="key" size={13} color={SAGE.primaryDark} />
@@ -804,7 +832,10 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               </Animated.View>
 
               {/* Panel 3: Riwayat Progres */}
-              <Animated.View style={[styles.card, getCardAnimStyle(2)]}>
+              <Animated.View
+                onLayout={(e) => { sectionOffsets.current.progress = e.nativeEvent.layout.y; }}
+                style={[styles.card, getCardAnimStyle(2)]}
+              >
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('progress')}>
                   <View style={styles.cardHead}>
                     <FontAwesome5 name="chart-line" size={15} color={SAGE.primary} />
@@ -824,8 +855,19 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                         <View key={p.id} style={styles.progItem}>
                           {editingProgId === p.id ? (
                             <View style={{ gap: 6 }}>
-                              <TextInput style={styles.input} keyboardType="numeric" value={editPct} onChangeText={setEditPct} />
-                              <TextInput style={styles.input} value={editNote} onChangeText={setEditNote} />
+                              <TextInput
+                                style={styles.input}
+                                keyboardType="numeric"
+                                value={editPct}
+                                onChangeText={setEditPct}
+                                onFocus={() => focusSection('progress')}
+                              />
+                              <TextInput
+                                style={styles.input}
+                                value={editNote}
+                                onChangeText={setEditNote}
+                                onFocus={() => focusSection('progress')}
+                              />
                               <TouchableOpacity style={styles.primaryBtn} onPress={() => handleSaveProgressEdit(p.id)}>
                                 <Text style={styles.primaryBtnText}>Simpan Koreksi Progres</Text>
                               </TouchableOpacity>
@@ -834,7 +876,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                             <View style={{ gap: 6 }}>
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={styles.progPct}>{p.percentage}% â€” {p.notes || 'Update progres'}</Text>
+                                  <Text style={styles.progPct}>{p.percentage}% — {p.notes || 'Update progres'}</Text>
                                   <Text style={styles.checkMeta}>{new Date(p.created_at).toLocaleString('id-ID')}</Text>
                                 </View>
                                 {isStaff && (
@@ -865,7 +907,10 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
               </Animated.View>
 
               {/* Panel 4: Chat Pesanan */}
-              <Animated.View style={[styles.card, getCardAnimStyle(3)]}>
+              <Animated.View
+                onLayout={(e) => { sectionOffsets.current.chat = e.nativeEvent.layout.y; }}
+                style={[styles.card, getCardAnimStyle(3)]}
+              >
                 <TouchableOpacity activeOpacity={0.75} style={styles.cardHeadToggle} onPress={() => toggleSection('chat')}>
                   <View style={styles.cardHead}>
                     <FontAwesome5 name="comments" size={15} color={SAGE.primary} />
@@ -891,7 +936,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                         placeholderTextColor={SAGE.textSecondary}
                         value={chatText}
                         onChangeText={setChatText}
-                        onFocus={() => setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 140)}
+                        onFocus={() => focusSection('chat', true)}
                       />
                       <TouchableOpacity style={styles.addBtn} onPress={handleSendChat}>
                         <FontAwesome5 name="paper-plane" size={14} color="#FFF" />
@@ -927,7 +972,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                   ]}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={styles.receiptBrand}>meroo.gi â€¢ Struk Resmi</Text>
+                    <Text style={styles.receiptBrand}>meroo.gi • Struk Resmi</Text>
                     <TouchableOpacity onPress={() => setShowReceiptModal(false)}>
                       <FontAwesome5 name="times" size={18} color={SAGE.textPrimary} />
                     </TouchableOpacity>
@@ -972,7 +1017,7 @@ export function OrderDetailModal({ visible, order, userId, role, onClose, onRefr
                 </TouchableOpacity>
               </Animated.View>
             </Modal>
-          </KeyboardAvoidingView>
+          </View>
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -1009,7 +1054,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: FONTS.displayBold, fontSize: 18, color: SAGE.textPrimary },
   headerSub: { fontFamily: FONTS.mono, fontSize: 11, color: SAGE.primaryDark, marginTop: 2 },
   closeBtn: { backgroundColor: SAGE.surfaceCard, padding: 10, borderRadius: 20 },
-  body: { padding: 16, gap: 14, paddingBottom: 48 },
+  body: { padding: 16, gap: 14, paddingBottom: 40 },
   actionRow: { flexDirection: 'row', gap: 8 },
   receiptBtn: {
     flex: 1,

@@ -178,7 +178,7 @@ export function OrderBottomSheetModal({
 
     const cleanUid = gameUid.trim();
     if (!/^\d{9,10}$/.test(cleanUid)) {
-      Alert.alert('UID Tidak Valid', 'Masukkan 9â€“10 digit angka Genshin Impact UID kamu.');
+      Alert.alert('UID Tidak Valid', 'Masukkan 9Ã¢â‚¬â€œ10 digit angka Genshin Impact UID kamu.');
       return;
     }
 
