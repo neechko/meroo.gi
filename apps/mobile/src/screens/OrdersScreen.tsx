@@ -47,7 +47,6 @@ export function OrdersScreen({ orders, onSelectOrder }: Props) {
         <Text style={styles.title}>Pesanan Saya ({orders.length})</Text>
         <Text style={styles.sub}>Ketuk pesanan untuk kalender checklist, vault, atau struk</Text>
 
-        {/* Segmented Tab Bar 4 Kolom: bebas konflik dengan swipe gesture layar */}
         <View style={styles.segmentRow}>
           {(
             [

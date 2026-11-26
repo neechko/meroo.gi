@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView,
+  View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Image,
   Animated, Easing, LayoutAnimation, Platform, UIManager, useWindowDimensions, Keyboard, KeyboardAvoidingView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -46,6 +46,19 @@ function parseOAuthCallback(url: string) {
 
 function normalizeRole(raw: any): 'consumer' | 'worker' | 'admin' {
   return raw === 'admin' || raw === 'worker' || raw === 'consumer' ? raw : 'consumer';
+}
+
+function WallpaperLoadingScreen() {
+  return (
+    <View style={styles.splashContainer}>
+      <StatusBar style="dark" />
+      <Image source={require('./assets/splash-wallpaper.jpg')} style={styles.splashImage} resizeMode="cover" />
+      <View style={styles.splashBadge}>
+        <ActivityIndicator size="small" color={SAGE.primaryDark} />
+        <Text style={styles.splashText}>Memuat meroo.gi...</Text>
+      </View>
+    </View>
+  );
 }
 
 function MainApp() {
@@ -300,7 +313,7 @@ function MainApp() {
           });
           if (sessErr) throw sessErr;
         } else {
-          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth -> URL Configuration.`);
+          throw new Error(`Redirect URL (${redirectTo}) belum ditambahkan di Supabase Auth.`);
         }
       } else {
         showToast('Login Google dibatalkan.', 'info');
@@ -308,7 +321,7 @@ function MainApp() {
     } catch (e: any) {
       showDialog({
         title: 'Login Google Gagal',
-        message: e.message || 'Pastikan Redirect URL exp://** sudah terdaftar di Supabase Auth.',
+        message: e.message || 'Pastikan Redirect URL sudah terdaftar di Supabase Auth.',
         type: 'error',
       });
     } finally {
@@ -318,11 +331,7 @@ function MainApp() {
   }
 
   if (booting) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={SAGE.primary} />
-      </View>
-    );
+    return <WallpaperLoadingScreen />;
   }
 
   if (!session?.user) {
@@ -602,11 +611,7 @@ export default function App() {
   });
 
   if (!fontsLoaded && !fontError) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={SAGE.primary} />
-      </View>
-    );
+    return <WallpaperLoadingScreen />;
   }
 
   return (
@@ -617,7 +622,21 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: SAGE.bgCanvas, alignItems: 'center', justifyContent: 'center' },
+  splashContainer: { flex: 1, backgroundColor: '#F6F3FA', alignItems: 'center', justifyContent: 'flex-end' },
+  splashImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+  splashBadge: {
+    marginBottom: 56,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: SAGE.border,
+  },
+  splashText: { fontFamily: FONTS.bodyBold, fontSize: 13, color: SAGE.textPrimary },
   loginWrap: { flexGrow: 1, backgroundColor: SAGE.bgCanvas, justifyContent: 'center', padding: 20 },
   loginCard: { backgroundColor: SAGE.surfaceCard, borderRadius: 28, padding: 24, borderWidth: 1.5, borderColor: SAGE.border, gap: 11 },
   brand: { fontFamily: FONTS.displayExtra, fontSize: 30, color: SAGE.textPrimary },

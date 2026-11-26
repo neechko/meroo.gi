@@ -15,7 +15,12 @@
                                                       "foregroundImage":  "./assets/adaptive-icon.png",
                                                       "backgroundColor":  "#FDFBF7"
                                                   },
-                                 "softwareKeyboardLayoutMode":  "resize"
+                                 "softwareKeyboardLayoutMode":  "resize",
+                                 "splash":  {
+                                                "image":  "./assets/splash-wallpaper.jpg",
+                                                "resizeMode":  "cover",
+                                                "backgroundColor":  "#F6F3FA"
+                                            }
                              },
                  "web":  {
                              "favicon":  "./assets/favicon.png"
@@ -51,9 +56,9 @@
                              ],
                  "icon":  "./assets/icon.png",
                  "splash":  {
-                                "image":  "./assets/icon.png",
-                                "resizeMode":  "contain",
-                                "backgroundColor":  "#FDFBF7"
+                                "image":  "./assets/splash-wallpaper.jpg",
+                                "resizeMode":  "cover",
+                                "backgroundColor":  "#F6F3FA"
                             }
              }
 }

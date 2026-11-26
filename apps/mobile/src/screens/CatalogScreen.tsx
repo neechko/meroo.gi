@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, StyleSheet , Keyboard } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS, formatIDR } from '../theme/sage';
 import { supabase } from '../lib/supabase';
@@ -14,6 +14,12 @@ interface Props {
 }
 
 export function CatalogScreen({ userId, services, categories, onOrderCreated }: Props) {
+  const [kbHeight, setKbHeight] = React.useState(0);
+  React.useEffect(() => {
+    const s1 = Keyboard.addListener('keyboardDidShow', (e) => setKbHeight(e.endCoordinates?.height || 0));
+    const s2 = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => { s1.remove(); s2.remove(); };
+  }, []);
   const { showToast } = useSageFeedback();
   const [query, setQuery] = useState('');
   const [selectedCat, setSelectedCat] = useState('all');
@@ -92,7 +98,7 @@ export function CatalogScreen({ userId, services, categories, onOrderCreated }: 
             onChangeText={setQuery}
           />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <TouchableOpacity
             style={[styles.catChip, selectedCat === 'all' && styles.catChipActive]}
             onPress={() => setSelectedCat('all')}
@@ -108,7 +114,7 @@ export function CatalogScreen({ userId, services, categories, onOrderCreated }: 
               <Text style={[styles.catText, selectedCat === c.slug && styles.catTextActive]}>{c.name}</Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list}>
@@ -137,6 +143,7 @@ export function CatalogScreen({ userId, services, categories, onOrderCreated }: 
       </ScrollView>
 
       <Modal visible={!!bookingService} animationType="slide" transparent>
+      <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: kbHeight }}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -159,7 +166,9 @@ export function CatalogScreen({ userId, services, categories, onOrderCreated }: 
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      
+      </View>
+    </Modal>
     </View>
   );
 }

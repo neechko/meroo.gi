@@ -65,13 +65,12 @@ export function AnimatedProgressBar({
 }: ProgressBarProps) {
   const clamped = Math.max(0, Math.min(100, Math.round(percentage || 0)));
   const widthAnim = useRef(new Animated.Value(0)).current;
-  const tipPulse = useRef(new Animated.Value(0.45)).current;
+  const flowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    widthAnim.setValue(0);
     Animated.timing(widthAnim, {
       toValue: clamped,
-      duration: 950,
+      duration: 900,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
@@ -79,32 +78,29 @@ export function AnimatedProgressBar({
 
   useEffect(() => {
     if (!isActive || clamped <= 0 || clamped >= 100) {
-      tipPulse.setValue(0);
+      flowAnim.setValue(0);
       return;
     }
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(tipPulse, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: false,
-        }),
-        Animated.timing(tipPulse, {
-          toValue: 0.35,
-          duration: 900,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: false,
-        }),
-      ])
+      Animated.timing(flowAnim, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      })
     );
     loop.start();
     return () => loop.stop();
-  }, [isActive, clamped, tipPulse]);
+  }, [isActive, clamped, flowAnim]);
 
   const widthPercent = widthAnim.interpolate({
     inputRange: [0, 100],
     outputRange: ['0%', '100%'],
+  });
+
+  const flowX = flowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-80, 220],
   });
 
   return (
@@ -122,13 +118,12 @@ export function AnimatedProgressBar({
       >
         {isActive && clamped > 0 && clamped < 100 && (
           <Animated.View
+            pointerEvents="none"
             style={[
-              styles.tipGlow,
+              styles.innerFlow,
               {
-                width: height + 4,
                 height,
-                borderRadius: height,
-                opacity: tipPulse,
+                transform: [{ translateX: flowX }],
               },
             ]}
           />
@@ -274,10 +269,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: {
-    justifyContent: 'center',
-    alignItems: 'flex-end',
+    overflow: 'hidden',
   },
-  tipGlow: {
-    backgroundColor: '#FFFFFF',
+  innerFlow: {
+    width: 44,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
 });
