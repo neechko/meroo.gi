@@ -1,8 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "echo skip",
-  "buildCommand": "go build ./...",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
-  ]
+  "buildCommand": "go build -o $VERCEL_OUTPUT_FILE ./cmd/server"
 }
