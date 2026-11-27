@@ -56,7 +56,7 @@ export function OrdersScreen({ orders, onSelectOrder, onGoCatalog }: Props) {
         <Text style={styles.title}>Pesanan Saya ({orders.length})</Text>
         <Text style={styles.sub}>Ketuk pesanan untuk kalender checklist, vault, tracking, atau struk</Text>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={styles.segmentRow}>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 12, flexGrow: 0, borderRadius: 16 }} contentContainerStyle={styles.segmentRow}>
           {(
             [
               { key: 'all', label: 'Semua', count: counts.all },

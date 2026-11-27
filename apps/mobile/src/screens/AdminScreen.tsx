@@ -675,7 +675,7 @@ export function AdminScreen({
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: Math.max(46, insets.top + 12) }]}>
         <Text style={styles.title}>Admin Studio</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={styles.tabScroll}>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator style={{ marginTop: 10, flexGrow: 0, borderRadius: 16 }} contentContainerStyle={styles.tabScroll}>
           {(
             [
               { key: 'finance', label: 'Keuangan & Grafik' },

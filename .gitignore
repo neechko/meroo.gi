@@ -54,6 +54,7 @@ Thumbs.db
 *.ntvs*
 *bug/
 *.njsproj
+note.txt
 *.sln
 *.sw?
 "@ | Set-Content -Path .\.gitignore -Encoding UTF8

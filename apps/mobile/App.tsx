@@ -16,6 +16,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { SAGE, FONTS } from './src/theme/sage';
 import { supabase } from './src/lib/supabase';
 import { goApi } from './src/lib/goApi';
+import { useReducedMotion } from './src/lib/useReducedMotion';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { CatalogScreen } from './src/screens/CatalogScreen';
 import { OrdersScreen } from './src/screens/OrdersScreen';
@@ -63,6 +64,7 @@ function WallpaperLoadingScreen() {
 }
 
 function MainApp() {
+  const reducedMotion = useReducedMotion();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { showToast, showDialog } = useSageFeedback();
@@ -117,7 +119,7 @@ function MainApp() {
     const idx = navItems.findIndex((item) => item.key === nextTab);
     if (idx < 0) return;
     setActiveTab(nextTab);
-    pagerRef.current?.scrollTo({ x: idx * screenWidth, animated: true });
+    pagerRef.current?.scrollTo({ x: idx * screenWidth, animated: !reducedMotion });
   }
 
   useEffect(() => {
@@ -598,6 +600,8 @@ function MainApp() {
         ref={pagerRef}
         horizontal
         pagingEnabled
+        // Horizontal gestures belong to the screen's filters; navigation uses the bottom tabs.
+        scrollEnabled={false}
         nestedScrollEnabled
         bounces={false}
         showsHorizontalScrollIndicator={false}
@@ -716,6 +720,9 @@ function MainApp() {
             <TouchableOpacity
               key={key}
               activeOpacity={0.8}
+              accessibilityRole="tab"
+              accessibilityLabel={label}
+              accessibilityState={{ selected: active }}
               style={styles.tabItem}
               onPress={() => goToTab(key)}
             >
@@ -845,7 +852,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: SAGE.primary,
   },
-  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 20, gap: 3 },
-  tabLabel: { fontFamily: FONTS.bodyBold, fontSize: 10, color: SAGE.textSecondary },
+  tabItem: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, paddingVertical: 9, minHeight: 48, borderRadius: 20, gap: 3 },
+  tabLabel: { fontFamily: FONTS.bodyBold, fontSize: 10, color: SAGE.textSecondary, maxWidth: '100%', textAlign: 'center' },
   tabLabelActive: { color: '#FFF' },
 });

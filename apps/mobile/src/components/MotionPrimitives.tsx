@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { SAGE } from '../theme/sage';
+import { useReducedMotion } from '../lib/useReducedMotion';
 
 interface CounterProps {
   value: number;
@@ -11,6 +12,7 @@ interface CounterProps {
 }
 
 export function AnimatedCounter({ value, suffix = '', prefix = '', duration = 850, style }: CounterProps) {
+  const reducedMotion = useReducedMotion();
   const target = Math.max(0, Math.round(value || 0));
   const [display, setDisplay] = useState(0);
   const anim = useRef(new Animated.Value(0)).current;
@@ -27,15 +29,16 @@ export function AnimatedCounter({ value, suffix = '', prefix = '', duration = 85
 
     Animated.timing(anim, {
       toValue: target,
-      duration,
+      duration: reducedMotion ? 0 : Math.min(duration, 450),
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
 
     return () => {
+      anim.stopAnimation();
       anim.removeListener(id);
     };
-  }, [target, duration, anim]);
+  }, [target, duration, anim, reducedMotion]);
 
   return (
     <Text style={style}>
@@ -63,21 +66,24 @@ export function AnimatedProgressBar({
   isActive = false,
   style,
 }: ProgressBarProps) {
+  const reducedMotion = useReducedMotion();
   const clamped = Math.max(0, Math.min(100, Math.round(percentage || 0)));
   const widthAnim = useRef(new Animated.Value(0)).current;
   const flowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(widthAnim, {
+    const animation = Animated.timing(widthAnim, {
       toValue: clamped,
-      duration: 900,
+      duration: reducedMotion ? 0 : 400,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
-    }).start();
-  }, [clamped, widthAnim]);
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [clamped, widthAnim, reducedMotion]);
 
   useEffect(() => {
-    if (!isActive || clamped <= 0 || clamped >= 100) {
+    if (reducedMotion || !isActive || clamped <= 0 || clamped >= 100) {
       flowAnim.setValue(0);
       return;
     }
@@ -91,7 +97,7 @@ export function AnimatedProgressBar({
     );
     loop.start();
     return () => loop.stop();
-  }, [isActive, clamped, flowAnim]);
+  }, [isActive, clamped, flowAnim, reducedMotion]);
 
   const widthPercent = widthAnim.interpolate({
     inputRange: [0, 100],
@@ -140,18 +146,26 @@ interface StaggerProps {
 }
 
 export function StaggerItem({ index, children, style }: StaggerProps) {
+  const reducedMotion = useReducedMotion();
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const delay = Math.min(index, 8) * 50;
-    Animated.spring(anim, {
+    if (reducedMotion) {
+      anim.setValue(1);
+      return;
+    }
+    const delay = Math.min(index, 4) * 30;
+    const animation = Animated.spring(anim, {
       toValue: 1,
       delay,
       speed: 20,
-      bounciness: 6,
+      bounciness: 0,
+      isInteraction: false,
       useNativeDriver: true,
-    }).start();
-  }, [index, anim]);
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [index, anim, reducedMotion]);
 
   const translateY = anim.interpolate({
     inputRange: [0, 1],
@@ -176,10 +190,11 @@ interface PulseDotProps {
 }
 
 export function LivePulseDot({ color = SAGE.primary, size = 8, active = true }: PulseDotProps) {
+  const reducedMotion = useReducedMotion();
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!active) {
+    if (!active || reducedMotion) {
       pulse.setValue(0);
       return;
     }
@@ -193,7 +208,7 @@ export function LivePulseDot({ color = SAGE.primary, size = 8, active = true }: 
     );
     loop.start();
     return () => loop.stop();
-  }, [active, pulse]);
+  }, [active, pulse, reducedMotion]);
 
   const ringScale = pulse.interpolate({
     inputRange: [0, 1],
