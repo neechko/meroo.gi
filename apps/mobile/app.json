@@ -1,64 +1,62 @@
 {
-    "expo":  {
-                 "name":  "meroo.gi",
-                 "slug":  "mobile",
-                 "version":  "1.0.1",
-                 "orientation":  "portrait",
-                 "userInterfaceStyle":  "light",
-                 "ios":  {
-                             "supportsTablet":  true
-                         },
-                 "android":  {
-                                 "predictiveBackGestureEnabled":  false,
-                                 "package":  "com.meroogi.mobile",
-                                 "adaptiveIcon":  {
-                                                      "foregroundImage":  "./assets/adaptive-icon.png",
-                                                      "backgroundColor":  "#FDFBF7"
-                                                  },
-                                 "softwareKeyboardLayoutMode":  "resize",
-                                 "splash":  {
-                                                "image":  "./assets/splash-wallpaper.jpg",
-                                                "resizeMode":  "cover",
-                                                "backgroundColor":  "#F6F3FA"
-                                            }
-                             },
-                 "web":  {
-                             "favicon":  "./assets/favicon.png"
-                         },
-                 "extra":  {
-                               "eas":  {
-                                           "projectId":  "0a7175af-0b7d-4efc-8449-d768d9c535e1"
-                                       }
-                           },
-                 "runtimeVersion":  {
-                                        "policy":  "appVersion"
-                                    },
-                 "updates":  {
-                                 "url":  "https://u.expo.dev/0a7175af-0b7d-4efc-8449-d768d9c535e1"
-                             },
-                 "scheme":  "meroogi",
-                 "plugins":  [
-                                 "expo-image",
-                                 "expo-font",
-                                 "expo-web-browser",
-                                 [
-                                     "expo-build-properties",
-                                     {
-                                         "android":  {
-                                                         "enableShrinkResourcesInReleaseBuilds":  true,
-                                                         "enableProguardInReleaseBuilds":  true,
-                                                         "buildArchs":  [
-                                                                            "arm64-v8a"
-                                                                        ]
-                                                     }
-                                     }
-                                 ]
-                             ],
-                 "icon":  "./assets/icon.png",
-                 "splash":  {
-                                "image":  "./assets/splash-wallpaper.jpg",
-                                "resizeMode":  "cover",
-                                "backgroundColor":  "#F6F3FA"
-                            }
-             }
+  "expo": {
+    "name": "meroo.gi",
+    "slug": "mobile",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "predictiveBackGestureEnabled": false,
+      "package": "com.meroogi.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FDFBF7"
+      },
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0a7175af-0b7d-4efc-8449-d768d9c535e1"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0a7175af-0b7d-4efc-8449-d768d9c535e1"
+    },
+    "scheme": "meroogi",
+    "plugins": [
+      "expo-image",
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableProguardInReleaseBuilds": true,
+            "buildArchs": [
+              "arm64-v8a"
+            ]
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F6F3FA",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "icon": "./assets/icon.png"
+  }
 }
